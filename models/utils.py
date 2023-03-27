@@ -1,9 +1,41 @@
 import numpy as np
+import torch
 
 from sklearn.metrics import average_precision_score
 
 
-def get_iou(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox):
+def get_iou(
+    x1_arr,
+    x2_arr,
+    y1_arr,
+    y2_arr,
+    x1_hat_arr,
+    x2_hat_arr,
+    y1_hat_arr,
+    y2_hat_arr,
+):
+    intersection_arr = (
+        torch.relu(
+            torch.minimum(x2_arr, x2_hat_arr) -
+            torch.maximum(x1_arr, x1_hat_arr),
+        ) *
+        torch.relu(
+            torch.minimum(y2_arr, y2_hat_arr) -
+            torch.maximum(y1_arr, y1_hat_arr),
+        )
+    )
+    union_arr = (
+        (x2_hat_arr - x1_hat_arr) * (y2_hat_arr - y1_hat_arr) +
+        (x2_arr - x1_arr) * (y2_arr - y1_arr) -
+        intersection_arr
+    )
+
+    iou_arr = intersection_arr / union_arr
+
+    return iou_arr
+
+
+def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox):
     x1_hat_arr = x_hat_arr - (w_hat_arr / 2)
     x2_hat_arr = x_hat_arr + (w_hat_arr / 2)
     y1_hat_arr = y_hat_arr - (h_hat_arr / 2)
@@ -58,8 +90,8 @@ def get_aps(
 
         if np.sum(mask) != 0:
             AP = average_precision_score(
-                class_true_arr_list[iou_list >= level].flatten(),
-                class_score_arr_list[iou_list >= level].flatten(),
+                (class_true_arr_list * (iou_list >= level)).flatten(),
+                (class_score_arr_list * (iou_list >= level)).flatten(),
             )
 
             aps[level] = AP

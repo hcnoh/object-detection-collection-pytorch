@@ -6,7 +6,7 @@ import torch.backends.mps
 
 from torch.utils.data import DataLoader
 
-from config import DEVICE, MODEL_CONFIG, TRAIN_CONFIG
+from config import DEVICE, BATCH_SIZE, MODEL_CONFIG, TRAIN_CONFIG
 from data_loaders.voc2012 import VOC2012
 from models.yolov1 import YOLOv1
 
@@ -35,11 +35,11 @@ def main():
     model = YOLOv1(**model_config).to(DEVICE)
 
     train_loader = DataLoader(
-        train_dataset, batch_size=64, shuffle=True,
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True,
         collate_fn=model.collate_fn
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=64, shuffle=True,
+        val_dataset, batch_size=BATCH_SIZE, shuffle=True,
         collate_fn=model.collate_fn
     )
 
