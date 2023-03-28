@@ -19,7 +19,7 @@ def main():
         os.makedirs(ckpt_path)
 
     now = datetime.datetime.now()
-    ckpt_path = os.path.join(ckpt_path, now.strftime("%Y-%m-%d %H:%M:%S"))
+    ckpt_path = os.path.join(ckpt_path, now.strftime("%Y-%m-%d %H-%M-%S"))
     os.makedirs(ckpt_path)
 
     dataset = VOC2012()
