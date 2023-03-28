@@ -14,9 +14,9 @@ TRAIN_CONFIG = {
     "YOLOv1": {
         "VOC2012": {
             "learning_rate_list": [
-                1e-4,
-                1e-5,
-                1e-6,
+                3e-3,
+                1e-3,
+                3e-4,
             ],
             "num_epochs_list": [
                 75,
