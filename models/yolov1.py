@@ -87,8 +87,14 @@ class YOLOv1(Module):
 
         # i_arr: [1, S, 1, 1]
         # j_arr: [1, 1, S, 1]
-        i_arr = torch.arange(self.S).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-        j_arr = torch.arange(self.S).unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        i_arr = (
+            torch.arange(self.S)
+            .to(DEVICE).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        )
+        j_arr = (
+            torch.arange(self.S)
+            .to(DEVICE).unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        )
 
         # bx_pred_batch, by_pred_batch,
         # bw_pred_batch, bh_pred_batch: [N, S, S, B]
