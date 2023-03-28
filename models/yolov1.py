@@ -569,9 +569,9 @@ class YOLOv1(Module):
             )
 
     def collate_fn_with_imgaug(self, batch):
-        return self.collate_fn(batch, img_aug=True)
+        return self.collate_fn(batch, augmentation=True)
 
-    def collate_fn(self, batch, img_aug=False, pad_val=-1):
+    def collate_fn(self, batch, augmentation=False, pad_val=-1):
         augmenter = iaa.Sequential([
             iaa.Affine(
                 scale=(0.8, 1.2),
@@ -588,7 +588,7 @@ class YOLOv1(Module):
         for img, bndbox_list in batch:
             img = np.array(img)
 
-            if img_aug:
+            if augmentation:
                 img_aug, bndbox_aug_list = augmenter(
                     image=img, bounding_boxes=bndbox_list
                 )
