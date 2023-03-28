@@ -1,4 +1,5 @@
 import os
+import datetime
 
 import torch
 import torch.cuda
@@ -15,6 +16,10 @@ def main():
     ckpt_path = "ckpts"
     if not os.path.exists(ckpt_path):
         os.makedirs(ckpt_path)
+
+    now = datetime.datetime.now()
+    ckpt_path = os.path.join(ckpt_path, now.strftime("%Y-%m-%d %H:%M:%S"))
+    os.makedirs(ckpt_path)
 
     dataset = VOC2012()
 
