@@ -1,5 +1,6 @@
 import os
 import datetime
+import json
 
 import torch
 import torch.cuda
@@ -30,6 +31,10 @@ def main():
     model_config["clc_list"] = dataset.clc_list
     model_config["clc2idx"] = dataset.clc2idx
 
+    train_config = TRAIN_CONFIG["YOLOv1"]["VOC2012"]
+    with open(os.path.join(ckpt_path, "train_config.json"), "w") as f:
+        json.dump(train_config, f)
+
     if DEVICE == "cuda" and not torch.cuda.is_available():
         print("error")
     elif DEVICE == "mps" and not torch.backends.mps.is_available():
@@ -48,7 +53,6 @@ def main():
         collate_fn=model.collate_fn
     )
 
-    train_config = TRAIN_CONFIG["YOLOv1"]["VOC2012"]
     train_config["train_loader"] = train_loader
     train_config["val_loader"] = val_loader
     train_config["ckpt_path"] = ckpt_path
