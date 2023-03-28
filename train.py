@@ -36,7 +36,7 @@ def main():
 
     train_loader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-        collate_fn=model.collate_fn
+        collate_fn=model.collate_fn_with_imgaug
     )
     val_loader = DataLoader(
         val_dataset, batch_size=BATCH_SIZE, shuffle=True,

@@ -17,7 +17,7 @@ from models.backbones.googlenet import GoogLeNetBackbone
 from models.utils import get_iou, get_aps
 
 
-class YOLOv1(Module):
+class YOLOv2(Module):
     def __init__(
         self,
         S,
