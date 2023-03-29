@@ -7,7 +7,7 @@ import torch.cuda
 import torch.backends.mps
 import imgaug.augmenters as iaa
 
-from torch.nn import Module, Sequential, Flatten, Linear, ReLU
+from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
 from torch.nn.functional import one_hot
 from torch.optim import Adam, SGD
 from torch.nn.utils.rnn import pad_sequence
@@ -46,6 +46,7 @@ class YOLOv1(Module):
             Flatten(),
             Linear(self.backbone_output_dim, 4096),
             ReLU(),
+            Dropout(),
             Linear(4096, self.S * self.S * (self.B * 5 + self.C))
         )
 
@@ -319,7 +320,7 @@ class YOLOv1(Module):
         train_loader,
         lambda_coord,
         lambda_noobj,
-        opt,
+        lr,
     ):
         train_loss_mean = []
         train_iou_list = []
@@ -363,6 +364,16 @@ class YOLOv1(Module):
                 mask_batch,
                 lambda_coord,
                 lambda_noobj
+            )
+
+            if epoch == 1:
+                lr = lr * (10 ** (1 - (progress_size / train_size)))
+
+            opt = SGD(
+                self.parameters(),
+                lr=lr,
+                momentum=0.9,
+                weight_decay=5e-4,
             )
 
             opt.zero_grad()
@@ -491,17 +502,10 @@ class YOLOv1(Module):
         max_map = 0
 
         for lr, num_epochs in zip(learning_rate_list, num_epochs_list):
-            opt = Adam(self.parameters(), lr=lr)
-            opt = SGD(
-                self.parameters(),
-                lr=lr,
-                momentum=0.9,
-                weight_decay=5e-4,
-            )
 
             for epoch in range(1 + cum_epoch, num_epochs + 1 + cum_epoch):
                 train_loss_mean, train_aps = self.train_one_step(
-                    epoch, train_loader, lambda_coord, lambda_noobj, opt,
+                    epoch, train_loader, lambda_coord, lambda_noobj, lr,
                 )
                 val_loss, val_aps = self.validate_one_step(
                     epoch, val_loader, lambda_coord, lambda_noobj,
