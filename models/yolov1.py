@@ -367,14 +367,20 @@ class YOLOv1(Module):
             )
 
             if epoch == 1:
-                lr = lr * (10 ** (1 - (progress_size / train_size)))
+                opt = SGD(
+                    self.parameters(),
+                    lr=lr / (10 ** (1 - (progress_size / train_size))),
+                    momentum=0.9,
+                    weight_decay=5e-4,
+                )
 
-            opt = SGD(
-                self.parameters(),
-                lr=lr,
-                momentum=0.9,
-                weight_decay=5e-4,
-            )
+            else:
+                opt = SGD(
+                    self.parameters(),
+                    lr=lr,
+                    momentum=0.9,
+                    weight_decay=5e-4,
+                )
 
             opt.zero_grad()
             loss.backward()
