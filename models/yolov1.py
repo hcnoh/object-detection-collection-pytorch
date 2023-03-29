@@ -9,7 +9,7 @@ import imgaug.augmenters as iaa
 
 from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
 from torch.nn.functional import one_hot
-from torch.optim import Adam, SGD
+from torch.optim import SGD
 from torch.nn.utils.rnn import pad_sequence
 
 from config import DEVICE
