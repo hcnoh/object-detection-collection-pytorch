@@ -60,6 +60,7 @@ class YOLOv1(Module):
     def get_loss(
         self,
         N,
+        L,
         y_pred_batch,
         tgt_batch,
         clc_idx_batch,
@@ -69,45 +70,67 @@ class YOLOv1(Module):
     ):
         '''
             Args:
-                y_pred_batch: [N, S, S, B * 5 + C]
-                tgt_batch: [N, L, 12]
-                clc_idx_batch: [N, L]
-                mask_batch: [N, L]
+                N:
+                    - batch size
+                L:
+                    - the # of bounding boxes in each target
+                y_pred_batch:
+                    - the model's prediction on the given targets
+                    - [N, S, S, B * 5 + C]
+                tgt_batch:
+                    - the given targets
+                    - [N, L, 12]
+                clc_idx_batch:
+                    - the class indices of given bounding boxes of targets
+                    - [N, L]
+                mask_batch:
+                    - the mask for the values which is not padded value
+                    - [N, L]
         '''
+        w_in = self.w_in
+        h_in = self.h_in
+
+        S = self.S
+        B = self.B
+        C = self.C
+
+        # mask_batch: [N, L, 1, 1, 1]
+        mask_batch = mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+
         # bx_norm_pred_batch, by_norm_pred_batch,
         # bw_norm_pred_batch, bh_norm_pred_batch: [N, S, S, B]
         # c_pred_batch: [N, S, S, B]
         # pc_arr_pred_batch: [N, S, S, C]
-        bx_norm_pred_batch = y_pred_batch[:, :, :, 0:self.B * 5:5]
-        by_norm_pred_batch = y_pred_batch[:, :, :, 1:self.B * 5:5]
-        bw_norm_pred_batch = y_pred_batch[:, :, :, 2:self.B * 5:5]
-        bh_norm_pred_batch = y_pred_batch[:, :, :, 3:self.B * 5:5]
-        c_pred_batch = y_pred_batch[:, :, :, 4:self.B * 5:5]
-        pc_arr_pred_batch = y_pred_batch[:, :, :, -self.C:]
+        bx_norm_pred_batch = y_pred_batch[:, :, :, 0:B * 5:5]
+        by_norm_pred_batch = y_pred_batch[:, :, :, 1:B * 5:5]
+        bw_norm_pred_batch = y_pred_batch[:, :, :, 2:B * 5:5]
+        bh_norm_pred_batch = y_pred_batch[:, :, :, 3:B * 5:5]
+        c_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
+        pc_arr_pred_batch = y_pred_batch[:, :, :, -C:]
 
         # i_arr: [1, S, 1, 1]
         # j_arr: [1, 1, S, 1]
         i_arr = (
-            torch.arange(self.S).to(DEVICE)
+            torch.arange(S).to(DEVICE)
             .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
         )
         j_arr = (
-            torch.arange(self.S).to(DEVICE)
+            torch.arange(S).to(DEVICE)
             .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
         )
 
         # bx_pred_batch, by_pred_batch,
         # bw_pred_batch, bh_pred_batch: [N, S, S, B]
         bx_pred_batch = (
-            bx_norm_pred_batch * (self.w_in / self.S) +
-            j_arr * (self.w_in / self.S)
+            bx_norm_pred_batch * (w_in / S) +
+            j_arr * (w_in / S)
         )
         by_pred_batch = (
-            by_norm_pred_batch * (self.h_in / self.S) +
-            i_arr * (self.h_in / self.S)
+            by_norm_pred_batch * (h_in / S) +
+            i_arr * (h_in / S)
         )
-        bw_pred_batch = bw_norm_pred_batch * self.w_in
-        bh_pred_batch = bh_norm_pred_batch * self.h_in
+        bw_pred_batch = bw_norm_pred_batch * w_in
+        bh_pred_batch = bh_norm_pred_batch * h_in
 
         # x1_pred_batch, x2_pred_batch,
         # y1_pred_batch, y2_pred_batch: [N, S, S, B]
@@ -136,7 +159,7 @@ class YOLOv1(Module):
         )
 
         # iou_batch: [N, L, S * S * B]
-        iou_batch = iou_batch.reshape([N, -1, self.S * self.S * self.B])
+        iou_batch = iou_batch.reshape([N, L, S * S * B])
 
         # responsible_mask_batch: [N, L, S, S, B]
         # noobj_mask_batch: [N, L, S, S, B]
@@ -144,26 +167,20 @@ class YOLOv1(Module):
             iou_batch == torch.max(iou_batch, dim=-1, keepdim=True).values
         )
         responsible_mask_batch = (
-            responsible_mask_batch.reshape([N, -1, self.S, self.S, self.B])
+            responsible_mask_batch.reshape([N, L, S, S, B])
         )
 
         noobj_mask_batch = (responsible_mask_batch == 0)
 
-        responsible_mask_batch = (
-            responsible_mask_batch *
-            mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-        )
-        noobj_mask_batch = (
-            noobj_mask_batch *
-            mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-        )
+        responsible_mask_batch = (responsible_mask_batch * mask_batch)
+        noobj_mask_batch = (noobj_mask_batch * mask_batch)
 
         # x1_grid_cell_batch, x2_grid_cell_batch: [1, S, 1, 1]
         # y1_grid_cell_batch, y2_grid_cell_batch: [1, 1, S, 1]
-        x1_grid_cell_batch = j_arr * (self.w_in / self.S)
-        x2_grid_cell_batch = x1_grid_cell_batch + (self.w_in / self.S)
-        y1_grid_cell_batch = i_arr * (self.h_in / self.S)
-        y2_grid_cell_batch = y1_grid_cell_batch + (self.h_in / self.S)
+        x1_grid_cell_batch = j_arr * (w_in / S)
+        x2_grid_cell_batch = x1_grid_cell_batch + (w_in / S)
+        y1_grid_cell_batch = i_arr * (h_in / S)
+        y2_grid_cell_batch = y1_grid_cell_batch + (h_in / S)
 
         # grid_cell_iou_batch: [N, L, S, S, 1]
         grid_cell_iou_batch = get_iou(
@@ -180,8 +197,7 @@ class YOLOv1(Module):
         # obj_mask_batch: [N, L, S, S, 1]
         obj_mask_batch = (grid_cell_iou_batch != 0)
         obj_mask_batch = (
-            obj_mask_batch *
-            mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+            obj_mask_batch * mask_batch
         )
 
         # bx_norm_tgt_batch, by_norm_tgt_batch,
@@ -192,7 +208,7 @@ class YOLOv1(Module):
         bh_norm_tgt_batch = tgt_batch[:, :, -1]
 
         # pc_arr_tgt_batch: [N, L, C]
-        pc_arr_tgt_batch = one_hot(clc_idx_batch, self.C)
+        pc_arr_tgt_batch = one_hot(clc_idx_batch, C)
 
         responsible_mask_batch = responsible_mask_batch.bool()
         noobj_mask_batch = noobj_mask_batch.bool()
@@ -242,7 +258,7 @@ class YOLOv1(Module):
         )
 
         loss_c = (
-            iou_batch.reshape([N, -1, self.S, self.S, self.B]) -
+            iou_batch.reshape([N, L, S, S, B]) -
             c_pred_batch.unsqueeze(1)
         ) ** 2
         loss_c = (
@@ -272,44 +288,67 @@ class YOLOv1(Module):
         )
 
         iou_list = torch.masked_select(
-            iou_batch.reshape([N, -1, self.S, self.S, self.B]),
+            iou_batch.reshape([N, L, S, S, B]),
             mask=responsible_mask_batch
         ).detach().cpu().numpy()
         iou_list = np.reshape(iou_list, [-1, 1])
 
         # pc_arr_pred_stacked_batch: [N, L, S, S, B, C]
+        # pc_arr_pred_stacked_batch = (
+        #     pc_arr_pred_batch.unsqueeze(1).unsqueeze(-2) *
+        #     torch.ones_like(
+        #         responsible_mask_batch.unsqueeze(-1)
+        #     ).to(DEVICE)
+        # )
         pc_arr_pred_stacked_batch = (
-            pc_arr_pred_batch.unsqueeze(1).unsqueeze(-2) *
-            torch.ones_like(
-                responsible_mask_batch.unsqueeze(-1)
-            ).to(DEVICE)
+            pc_arr_pred_batch
+            .unsqueeze(1).unsqueeze(-2).repeat(1, L, 1, 1, B, 1)
         )
 
         # pc_arr_tgt_stacked_batch: [N, L, S, S, B, C]
+        # pc_arr_tgt_stacked_batch = (
+        #     pc_arr_tgt_batch.unsqueeze(-2).unsqueeze(-2).unsqueeze(-2) *
+        #     torch.ones_like(
+        #         responsible_mask_batch.unsqueeze(-1)
+        #     ).to(DEVICE)
+        # )
         pc_arr_tgt_stacked_batch = (
-            pc_arr_tgt_batch.unsqueeze(-2).unsqueeze(-2).unsqueeze(-2) *
-            torch.ones_like(
-                responsible_mask_batch.unsqueeze(-1)
-            ).to(DEVICE)
+            pc_arr_tgt_batch
+            .unsqueeze(-2).unsqueeze(-2).unsqueeze(-2)
+            .repeat(1, 1, S, S, B, 1)
         )
 
+        # class_true_arr_list = torch.masked_select(
+        #     pc_arr_tgt_stacked_batch,
+        #     mask=(
+        #         responsible_mask_batch.unsqueeze(-1) *
+        #         torch.ones_like(pc_arr_tgt_stacked_batch).to(DEVICE)
+        #     ).bool(),
+        # ).detach().cpu().numpy()
         class_true_arr_list = torch.masked_select(
             pc_arr_tgt_stacked_batch,
             mask=(
-                responsible_mask_batch.unsqueeze(-1) *
-                torch.ones_like(pc_arr_tgt_stacked_batch).to(DEVICE)
-            ).bool(),
+                responsible_mask_batch
+                .unsqueeze(-1).repeat(1, 1, 1, 1, 1, C)
+            ),
         ).detach().cpu().numpy()
-        class_true_arr_list = np.reshape(class_true_arr_list, [-1, self.C])
+        class_true_arr_list = np.reshape(class_true_arr_list, [-1, C])
 
+        # class_score_arr_list = torch.masked_select(
+        #     pc_arr_pred_stacked_batch,
+        #     mask=(
+        #         responsible_mask_batch.unsqueeze(-1) *
+        #         torch.ones_like(pc_arr_tgt_stacked_batch).to(DEVICE)
+        #     ).bool(),
+        # ).detach().cpu().numpy()
         class_score_arr_list = torch.masked_select(
             pc_arr_pred_stacked_batch,
             mask=(
-                responsible_mask_batch.unsqueeze(-1) *
-                torch.ones_like(pc_arr_tgt_stacked_batch).to(DEVICE)
-            ).bool(),
+                responsible_mask_batch
+                .unsqueeze(-1).repeat(1, 1, 1, 1, 1, C)
+            ),
         ).detach().cpu().numpy()
-        class_score_arr_list = np.reshape(class_score_arr_list, [-1, self.C])
+        class_score_arr_list = np.reshape(class_score_arr_list, [-1, C])
 
         return loss, iou_list, class_true_arr_list, class_score_arr_list
 
@@ -337,6 +376,8 @@ class YOLOv1(Module):
             x_batch, tgt_batch, clc_idx_batch, mask_batch = data
 
             N = x_batch.shape[0]
+            L = tgt_batch.shape[1]
+
             progress_size += N
 
             print(
@@ -357,6 +398,7 @@ class YOLOv1(Module):
                 class_score_arr_list
             ) = self.get_loss(
                 N,
+                L,
                 y_pred_batch,
                 tgt_batch,
                 clc_idx_batch,
@@ -429,6 +471,8 @@ class YOLOv1(Module):
             x_batch, tgt_batch, clc_idx_batch, mask_batch = data
 
             N = x_batch.shape[0]
+            L = tgt_batch.shape[1]
+
             progress_size += N
 
             print(
@@ -449,6 +493,7 @@ class YOLOv1(Module):
                 class_score_arr_list
             ) = self.get_loss(
                 N,
+                L,
                 y_pred_batch,
                 tgt_batch,
                 clc_idx_batch,
