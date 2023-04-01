@@ -294,37 +294,18 @@ class YOLOv1(Module):
         iou_list = np.reshape(iou_list, [-1, 1])
 
         # pc_arr_pred_stacked_batch: [N, L, S, S, B, C]
-        # pc_arr_pred_stacked_batch = (
-        #     pc_arr_pred_batch.unsqueeze(1).unsqueeze(-2) *
-        #     torch.ones_like(
-        #         responsible_mask_batch.unsqueeze(-1)
-        #     ).to(DEVICE)
-        # )
         pc_arr_pred_stacked_batch = (
             pc_arr_pred_batch
             .unsqueeze(1).unsqueeze(-2).repeat(1, L, 1, 1, B, 1)
         )
 
         # pc_arr_tgt_stacked_batch: [N, L, S, S, B, C]
-        # pc_arr_tgt_stacked_batch = (
-        #     pc_arr_tgt_batch.unsqueeze(-2).unsqueeze(-2).unsqueeze(-2) *
-        #     torch.ones_like(
-        #         responsible_mask_batch.unsqueeze(-1)
-        #     ).to(DEVICE)
-        # )
         pc_arr_tgt_stacked_batch = (
             pc_arr_tgt_batch
             .unsqueeze(-2).unsqueeze(-2).unsqueeze(-2)
             .repeat(1, 1, S, S, B, 1)
         )
 
-        # class_true_arr_list = torch.masked_select(
-        #     pc_arr_tgt_stacked_batch,
-        #     mask=(
-        #         responsible_mask_batch.unsqueeze(-1) *
-        #         torch.ones_like(pc_arr_tgt_stacked_batch).to(DEVICE)
-        #     ).bool(),
-        # ).detach().cpu().numpy()
         class_true_arr_list = torch.masked_select(
             pc_arr_tgt_stacked_batch,
             mask=(
@@ -334,13 +315,6 @@ class YOLOv1(Module):
         ).detach().cpu().numpy()
         class_true_arr_list = np.reshape(class_true_arr_list, [-1, C])
 
-        # class_score_arr_list = torch.masked_select(
-        #     pc_arr_pred_stacked_batch,
-        #     mask=(
-        #         responsible_mask_batch.unsqueeze(-1) *
-        #         torch.ones_like(pc_arr_tgt_stacked_batch).to(DEVICE)
-        #     ).bool(),
-        # ).detach().cpu().numpy()
         class_score_arr_list = torch.masked_select(
             pc_arr_pred_stacked_batch,
             mask=(
