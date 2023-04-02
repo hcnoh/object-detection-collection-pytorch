@@ -7,7 +7,7 @@ import torch.cuda
 import torch.backends.mps
 import imgaug.augmenters as iaa
 
-from torch.nn import Module, Sequential, Flatten, Linear, ReLU
+from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
 from torch.nn.functional import one_hot
 from torch.optim import SGD
 from torch.nn.utils.rnn import pad_sequence
@@ -46,6 +46,7 @@ class YOLOv1(Module):
             Flatten(),
             Linear(self.backbone_output_dim, 4096),
             ReLU(),
+            Dropout(.5),
             Linear(4096, self.S * self.S * (self.B * 5 + self.C))
         )
 
