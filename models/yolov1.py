@@ -94,9 +94,6 @@ class YOLOv1(Module):
         B = self.B
         C = self.C
 
-        # mask_batch: [N, L, 1, 1, 1]
-        mask_batch = mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-
         # bx_norm_pred_batch, by_norm_pred_batch,
         # bw_norm_pred_batch, bh_norm_pred_batch: [N, S, S, B]
         # c_pred_batch: [N, S, S, B]
@@ -108,26 +105,45 @@ class YOLOv1(Module):
         c_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
         pc_arr_pred_batch = y_pred_batch[:, :, :, -C:]
 
-        # i_arr: [1, S, 1, 1]
-        # j_arr: [1, 1, S, 1]
+        # i_arr: [1, S, 1]
+        # j_arr: [1, 1, S]
         i_arr = (
             torch.arange(S).to(DEVICE)
-            .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            .unsqueeze(0).unsqueeze(-1)
         )
         j_arr = (
             torch.arange(S).to(DEVICE)
-            .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+            .unsqueeze(0).unsqueeze(0)
+        )
+
+        # i_lower_bound_arr, i_upper_bound_arr: [1, S, 1]
+        # j_lower_bound_arr, j_upper_bound_arr: [1, 1, S]
+        i_lower_bound_arr = i_arr * (h_in / S)
+        i_upper_bound_arr = i_lower_bound_arr + (h_in / S)
+        j_lower_bound_arr = j_arr * (w_in / S)
+        j_upper_bound_arr = j_lower_bound_arr + (w_in / S)
+
+        # bx_tgt_batch, by_tgt_batch: [N, L, 1, 1]
+        bx_tgt_batch = tgt_batch[:, :, 4].unsqueeze(-1).unsqueeze(-1)
+        by_tgt_batch = tgt_batch[:, :, 5].unsqueeze(-1).unsqueeze(-1)
+
+        # responsible_grid_cell_mask_batch: [N, L, S, S]
+        responsible_grid_cell_mask_batch = (
+            (bx_tgt_batch >= j_lower_bound_arr.unsqueeze(1)) *
+            (bx_tgt_batch < j_upper_bound_arr.unsqueeze(1)) *
+            (by_tgt_batch >= i_lower_bound_arr.unsqueeze(1)) *
+            (by_tgt_batch < i_upper_bound_arr.unsqueeze(1))
         )
 
         # bx_pred_batch, by_pred_batch,
         # bw_pred_batch, bh_pred_batch: [N, S, S, B]
         bx_pred_batch = (
             bx_norm_pred_batch * (w_in / S) +
-            j_arr * (w_in / S)
+            j_arr.unsqueeze(-1) * (w_in / S)
         )
         by_pred_batch = (
             by_norm_pred_batch * (h_in / S) +
-            i_arr * (h_in / S)
+            i_arr.unsqueeze(-1) * (h_in / S)
         )
         bw_pred_batch = bw_norm_pred_batch * w_in
         bh_pred_batch = bh_norm_pred_batch * h_in
@@ -140,64 +156,44 @@ class YOLOv1(Module):
         y2_pred_batch = by_pred_batch + (bh_pred_batch / 2)
 
         # x1_tgt_batch, x2_tgt_batch,
-        # y1_tgt_batch, y2_tgt_batch: [N, L]
-        x1_tgt_batch = tgt_batch[:, :, 0]
-        x2_tgt_batch = tgt_batch[:, :, 1]
-        y1_tgt_batch = tgt_batch[:, :, 2]
-        y2_tgt_batch = tgt_batch[:, :, 3]
+        # y1_tgt_batch, y2_tgt_batch: [N, L, 1, 1, 1]
+        x1_tgt_batch = (
+            tgt_batch[:, :, 0].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        )
+        x2_tgt_batch = (
+            tgt_batch[:, :, 1].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        )
+        y1_tgt_batch = (
+            tgt_batch[:, :, 2].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        )
+        y2_tgt_batch = (
+            tgt_batch[:, :, 3].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        )
 
         # iou_batch: [N, L, S, S, B]
         iou_batch = get_iou(
-            x1_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            x2_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            y1_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            y2_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
+            x1_tgt_batch,
+            x2_tgt_batch,
+            y1_tgt_batch,
+            y2_tgt_batch,
             x1_pred_batch.unsqueeze(1),
             x2_pred_batch.unsqueeze(1),
             y1_pred_batch.unsqueeze(1),
             y2_pred_batch.unsqueeze(1),
         )
 
-        # iou_batch: [N, L, S * S * B]
-        iou_batch = iou_batch.reshape([N, L, S * S * B])
-
-        # responsible_mask_batch: [N, L, S, S, B]
-        # noobj_mask_batch: [N, L, S, S, B]
-        responsible_mask_batch = (
+        # responsible_bndbox_mask_batch: [N, L, S, S, B]
+        responsible_bndbox_mask_batch = (
             iou_batch == torch.max(iou_batch, dim=-1, keepdim=True).values
         )
-        responsible_mask_batch = (
-            responsible_mask_batch.reshape([N, L, S, S, B])
+        responsible_bndbox_mask_batch = (
+            responsible_bndbox_mask_batch *
+            responsible_grid_cell_mask_batch.unsqueeze(-1)
         )
 
-        noobj_mask_batch = (responsible_mask_batch == 0)
-
-        responsible_mask_batch = (responsible_mask_batch * mask_batch)
-        noobj_mask_batch = (noobj_mask_batch * mask_batch)
-
-        # x1_grid_cell_batch, x2_grid_cell_batch: [1, S, 1, 1]
-        # y1_grid_cell_batch, y2_grid_cell_batch: [1, 1, S, 1]
-        x1_grid_cell_batch = j_arr * (w_in / S)
-        x2_grid_cell_batch = x1_grid_cell_batch + (w_in / S)
-        y1_grid_cell_batch = i_arr * (h_in / S)
-        y2_grid_cell_batch = y1_grid_cell_batch + (h_in / S)
-
-        # grid_cell_iou_batch: [N, L, S, S, 1]
-        grid_cell_iou_batch = get_iou(
-            x1_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            x2_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            y1_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            y2_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
-            x1_grid_cell_batch.unsqueeze(1),
-            x2_grid_cell_batch.unsqueeze(1),
-            y1_grid_cell_batch.unsqueeze(1),
-            y2_grid_cell_batch.unsqueeze(1),
-        )
-
-        # obj_mask_batch: [N, L, S, S, 1]
-        obj_mask_batch = (grid_cell_iou_batch != 0)
-        obj_mask_batch = (
-            obj_mask_batch * mask_batch
+        # not_responsible_bndbox_mask_batch: [N, L, S, S, B]
+        not_responsible_bndbox_mask_batch = (
+            responsible_bndbox_mask_batch == 0
         )
 
         # bx_norm_tgt_batch, by_norm_tgt_batch,
@@ -207,14 +203,35 @@ class YOLOv1(Module):
         bw_norm_tgt_batch = tgt_batch[:, :, -2]
         bh_norm_tgt_batch = tgt_batch[:, :, -1]
 
+        bx_norm_tgt_batch = torch.maximum(
+            torch.minimum(
+                bx_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
+            ),
+            torch.tensor(0.).to(DEVICE)
+        )
+        by_norm_tgt_batch = torch.maximum(
+            torch.minimum(
+                by_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
+            ),
+            torch.tensor(0.).to(DEVICE)
+        )
+        bw_norm_tgt_batch = torch.maximum(
+            torch.minimum(
+                bw_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
+            ),
+            torch.tensor(0.).to(DEVICE)
+        )
+        bh_norm_tgt_batch = torch.maximum(
+            torch.minimum(
+                bh_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
+            ),
+            torch.tensor(0.).to(DEVICE)
+        )
+
         # pc_arr_tgt_batch: [N, L, C]
         pc_arr_tgt_batch = one_hot(clc_idx_batch, C)
 
-        responsible_mask_batch = responsible_mask_batch.bool()
-        noobj_mask_batch = noobj_mask_batch.bool()
-        obj_mask_batch = obj_mask_batch.bool()
-        mask_batch = mask_batch.bool()
-
+        # loss_xy: [N, L, S, S, B] -> [N, L]
         loss_xy = (
             (
                 bx_norm_tgt_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) -
@@ -226,16 +243,15 @@ class YOLOv1(Module):
             ) ** 2
         )
         loss_xy = (
-            torch.masked_select(loss_xy, mask=responsible_mask_batch).mean()
+            (loss_xy * responsible_bndbox_mask_batch).sum(-1).sum(-1).sum(-1)
         )
 
+        # loss_wh: [N, L, S, S, B] -> [N, L]
         loss_wh = (
             (
                 torch.sqrt(
-                    torch.relu(
-                        bw_norm_tgt_batch
-                        .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-                    )
+                    bw_norm_tgt_batch
+                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 ) -
                 torch.sqrt(
                     bw_norm_pred_batch.unsqueeze(1)
@@ -243,10 +259,8 @@ class YOLOv1(Module):
             ) ** 2 +
             (
                 torch.sqrt(
-                    torch.relu(
-                        bh_norm_tgt_batch
-                        .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-                    )
+                    bh_norm_tgt_batch
+                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 ) -
                 torch.sqrt(
                     bh_norm_pred_batch.unsqueeze(1)
@@ -254,75 +268,84 @@ class YOLOv1(Module):
             ) ** 2
         )
         loss_wh = (
-            torch.masked_select(loss_wh, mask=responsible_mask_batch).mean()
+            (loss_wh * responsible_bndbox_mask_batch).sum(-1).sum(-1).sum(-1)
         )
 
-        loss_c = (
-            iou_batch.reshape([N, L, S, S, B]) -
-            c_pred_batch.unsqueeze(1)
+        # loss_confidence: [N, L, S, S, B] -> [N, L]
+        loss_confidence = (
+            iou_batch - c_pred_batch.unsqueeze(1)
         ) ** 2
-        loss_c = (
-            torch.masked_select(loss_c, mask=responsible_mask_batch).mean()
+        loss_confidence = (
+            (loss_confidence * responsible_bndbox_mask_batch)
+            .sum(-1).sum(-1).sum(-1)
         )
 
-        loss_noobj_c = (
-            torch.zeros_like(noobj_mask_batch.float()) -
-            c_pred_batch.unsqueeze(1)
+        # loss_noobj: [N, L, S, S, B] -> [N, L]
+        loss_noobj = (
+            0 -
+            c_pred_batch.unsqueeze(1).repeat(1, L, 1, 1, 1)
         ) ** 2
-        loss_noobj_c = (
-            torch.masked_select(loss_noobj_c, mask=noobj_mask_batch).mean()
+        loss_noobj = (
+            (loss_noobj * not_responsible_bndbox_mask_batch)
+            .sum(-1).sum(-1).sum(-1)
         )
 
-        loss_pc = (
+        # loss_class: [N, L, S, S, C] -> [N, L, S, S] -> [N, L]
+        loss_class = (
             pc_arr_tgt_batch.unsqueeze(-2).unsqueeze(-2) -
             pc_arr_pred_batch.unsqueeze(1)
         ) ** 2
-        loss_pc = torch.masked_select(loss_pc, mask=obj_mask_batch).mean()
+        loss_class = loss_class.sum(-1)
+        loss_class = (
+            (loss_class * responsible_grid_cell_mask_batch).sum(-1).sum(-1)
+        )
 
+        # loss: [N, L] -> []
         loss = (
             lambda_coord * loss_xy +
             lambda_coord * loss_wh +
-            loss_c +
-            lambda_noobj * loss_noobj_c +
-            loss_pc
+            loss_confidence +
+            lambda_noobj * loss_noobj +
+            loss_class
+        )
+        loss = torch.masked_select(loss, mask=mask_batch).mean()
+
+        # iou_list: [N, L, S, S, B] -> [L']
+        iou_list = torch.masked_select(
+            iou_batch,
+            mask=mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
         )
 
-        iou_list = torch.masked_select(
-            iou_batch.reshape([N, L, S, S, B]),
-            mask=responsible_mask_batch
-        ).detach().cpu().numpy()
-        iou_list = np.reshape(iou_list, [-1, 1])
-
-        # pc_arr_pred_stacked_batch: [N, L, S, S, B, C]
-        pc_arr_pred_stacked_batch = (
+        # class_score_arr_list: [N, L, S, S, B, C] -> [L', C]
+        class_score_arr_list = (
             pc_arr_pred_batch
             .unsqueeze(1).unsqueeze(-2).repeat(1, L, 1, 1, B, 1)
         )
+        class_score_arr_list = torch.masked_select(
+            class_score_arr_list,
+            mask=(
+                mask_batch
+                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+            )
+        ).reshape([-1, C])
 
-        # pc_arr_tgt_stacked_batch: [N, L, S, S, B, C]
-        pc_arr_tgt_stacked_batch = (
+        # class_true_arr_list: [N, L, S, S, B, C] -> [L', C]
+        class_true_arr_list = (
             pc_arr_tgt_batch
             .unsqueeze(-2).unsqueeze(-2).unsqueeze(-2)
             .repeat(1, 1, S, S, B, 1)
         )
-
         class_true_arr_list = torch.masked_select(
-            pc_arr_tgt_stacked_batch,
+            class_true_arr_list,
             mask=(
-                responsible_mask_batch
-                .unsqueeze(-1).repeat(1, 1, 1, 1, 1, C)
-            ),
-        ).detach().cpu().numpy()
-        class_true_arr_list = np.reshape(class_true_arr_list, [-1, C])
+                mask_batch
+                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+            )
+        ).reshape([-1, C])
 
-        class_score_arr_list = torch.masked_select(
-            pc_arr_pred_stacked_batch,
-            mask=(
-                responsible_mask_batch
-                .unsqueeze(-1).repeat(1, 1, 1, 1, 1, C)
-            ),
-        ).detach().cpu().numpy()
-        class_score_arr_list = np.reshape(class_score_arr_list, [-1, C])
+        iou_list = iou_list.detach().cpu().numpy()
+        class_score_arr_list = class_score_arr_list.detach().cpu().numpy()
+        class_true_arr_list = class_true_arr_list.detach().cpu().numpy()
 
         return loss, iou_list, class_true_arr_list, class_score_arr_list
 
