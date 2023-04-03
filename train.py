@@ -28,8 +28,8 @@ def main():
     val_dataset = dataset.val_dataset
 
     model_config = MODEL_CONFIG["YOLOv1"]
-    model_config["clc_list"] = dataset.clc_list
-    model_config["clc2idx"] = dataset.clc2idx
+    model_config["cls_list"] = dataset.cls_list
+    model_config["cls2idx"] = dataset.cls2idx
 
     train_config = TRAIN_CONFIG["YOLOv1"]["VOC2012"]
     with open(os.path.join(ckpt_path, "train_config.json"), "w") as f:

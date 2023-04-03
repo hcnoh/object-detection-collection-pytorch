@@ -64,8 +64,8 @@ class VOC2012:
                     self.train_lbls,
                     self.val_imgs,
                     self.val_lbls,
-                    self.clc_list,
-                    self.clc2idx,
+                    self.cls_list,
+                    self.cls2idx,
                 ) = pickle.load(f)
 
         else:
@@ -81,7 +81,7 @@ class VOC2012:
         self.val_imgs = []
         self.val_lbls = []
 
-        clcs = []
+        cls_list = []
 
         with open(self.train_list_path, "r") as f:
             for line in f.readlines():
@@ -90,7 +90,7 @@ class VOC2012:
                 self.train_imgs.append(img)
                 self.train_lbls.append(lbl)
 
-                clcs.extend([bndbox.label for bndbox in lbl])
+                cls_list.extend([bndbox.label for bndbox in lbl])
 
         with open(self.val_list_path, "r") as f:
             for line in f.readlines():
@@ -99,10 +99,10 @@ class VOC2012:
                 self.val_imgs.append(img)
                 self.val_lbls.append(lbl)
 
-                clcs.extend([bndbox.label for bndbox in lbl])
+                cls_list.extend([bndbox.label for bndbox in lbl])
 
-        self.clc_list = np.unique(clcs)
-        self.clc2idx = {clc: i for i, clc in enumerate(self.clc_list)}
+        self.cls_list = np.unique(cls_list)
+        self.cls2idx = {cls: i for i, cls in enumerate(self.cls_list)}
 
         with open(self.preprocessed_dataset_path, "wb") as f:
             pickle.dump(
@@ -111,8 +111,8 @@ class VOC2012:
                     self.train_lbls,
                     self.val_imgs,
                     self.val_lbls,
-                    self.clc_list,
-                    self.clc2idx,
+                    self.cls_list,
+                    self.cls2idx,
                 ),
                 f,
             )

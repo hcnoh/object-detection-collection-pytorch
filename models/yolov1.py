@@ -22,8 +22,8 @@ class YOLOv1(Module):
         self,
         S,
         B,
-        clc_list,
-        clc2idx,
+        cls_list,
+        cls2idx,
     ) -> None:
         super().__init__()
 
@@ -35,10 +35,10 @@ class YOLOv1(Module):
         self.S = S
         self.B = B
 
-        self.clc_list = clc_list
-        self.clc2idx = clc2idx
+        self.cls_list = cls_list
+        self.cls2idx = cls2idx
 
-        self.C = len(self.clc_list)
+        self.C = len(self.cls_list)
 
         self.backbone_output_dim = np.prod(self.backbone_model.output_shape)
 
@@ -64,7 +64,7 @@ class YOLOv1(Module):
         L,
         y_pred_batch,
         tgt_batch,
-        clc_idx_batch,
+        cls_idx_batch,
         mask_batch,
         lambda_coord,
         lambda_noobj,
@@ -81,7 +81,7 @@ class YOLOv1(Module):
                 tgt_batch:
                     - the given targets
                     - [N, L, 12]
-                clc_idx_batch:
+                cls_idx_batch:
                     - the class indices of given bounding boxes of targets
                     - [N, L]
                 mask_batch:
@@ -230,7 +230,7 @@ class YOLOv1(Module):
         )
 
         # pc_arr_tgt_batch: [N, L, C]
-        pc_arr_tgt_batch = one_hot(clc_idx_batch, C)
+        pc_arr_tgt_batch = one_hot(cls_idx_batch, C)
 
         # loss_xy: [N, L, S, S, B] -> [N, L]
         loss_xy = (
@@ -369,9 +369,9 @@ class YOLOv1(Module):
         for data in train_loader:
             # x_batch: [N, H, W, 3]
             # tgt_batch: [N, L, 12]
-            # clc_idx_batch: [N, L]
+            # cls_idx_batch: [N, L]
             # mask_batch: [N, L]
-            x_batch, tgt_batch, clc_idx_batch, mask_batch = data
+            x_batch, tgt_batch, cls_idx_batch, mask_batch = data
 
             N = x_batch.shape[0]
             L = tgt_batch.shape[1]
@@ -399,7 +399,7 @@ class YOLOv1(Module):
                 L,
                 y_pred_batch,
                 tgt_batch,
-                clc_idx_batch,
+                cls_idx_batch,
                 mask_batch,
                 lambda_coord,
                 lambda_noobj
@@ -464,9 +464,9 @@ class YOLOv1(Module):
         for data in val_loader:
             # x_batch: [N, H, W, 3]
             # tgt_batch: [N, L, 12]
-            # clc_idx_batch: [N, L]
+            # cls_idx_batch: [N, L]
             # mask_batch: [N, L]
-            x_batch, tgt_batch, clc_idx_batch, mask_batch = data
+            x_batch, tgt_batch, cls_idx_batch, mask_batch = data
 
             N = x_batch.shape[0]
             L = tgt_batch.shape[1]
@@ -494,7 +494,7 @@ class YOLOv1(Module):
                 L,
                 y_pred_batch,
                 tgt_batch,
-                clc_idx_batch,
+                cls_idx_batch,
                 mask_batch,
                 lambda_coord,
                 lambda_noobj
@@ -641,7 +641,7 @@ class YOLOv1(Module):
 
         img_batch = []
         tgt_batch = []
-        clc_idx_batch = []
+        cls_idx_batch = []
 
         for img, bndbox_list in batch:
             img = np.array(img)
@@ -688,31 +688,31 @@ class YOLOv1(Module):
                 ]
                 for bndbox in bndbox_aug_list
             ]
-            clc_idx = [
-                self.clc2idx[bndbox.label] for bndbox in bndbox_aug_list
+            cls_idx = [
+                self.cls2idx[bndbox.label] for bndbox in bndbox_aug_list
             ]
 
             if len(tgt) == 0:
                 tgt.append(
                     [pad_val] * 12
                 )
-                clc_idx.append(0)
+                cls_idx.append(0)
 
             img_batch.append(torch.tensor(img_aug).to(DEVICE))
             tgt_batch.append(torch.tensor(tgt).to(DEVICE))
-            clc_idx_batch.append(torch.tensor(clc_idx).to(DEVICE))
+            cls_idx_batch.append(torch.tensor(cls_idx).to(DEVICE))
 
         # img_batch: [N, W, H, 3]
         # tgt_batch: [N, L, 12]
         # mask_batch: [N, L]
-        # clc_idx_batch: [N, L]
+        # cls_idx_batch: [N, L]
         img_batch = torch.stack(img_batch, dim=0)
         tgt_batch = pad_sequence(
             tgt_batch, batch_first=True, padding_value=pad_val
         )
-        clc_idx_batch = pad_sequence(
-            clc_idx_batch, batch_first=True, padding_value=0
+        cls_idx_batch = pad_sequence(
+            cls_idx_batch, batch_first=True, padding_value=0
         )
         mask_batch = (tgt_batch != pad_val).prod(-1)
 
-        return img_batch, tgt_batch, clc_idx_batch, mask_batch
+        return img_batch, tgt_batch, cls_idx_batch, mask_batch
