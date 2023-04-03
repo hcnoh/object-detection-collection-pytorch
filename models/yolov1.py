@@ -309,12 +309,12 @@ class YOLOv1(Module):
             lambda_noobj * loss_noobj +
             loss_class
         )
-        loss = torch.masked_select(loss, mask=mask_batch).mean()
+        loss = torch.masked_select(loss, mask=mask_batch.bool()).mean()
 
         # iou_list: [N, L, S, S, B] -> [L']
         iou_list = torch.masked_select(
             iou_batch,
-            mask=mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+            mask=mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
         )
 
         # class_score_arr_list: [N, L, S, S, B, C] -> [L', C]
@@ -326,7 +326,7 @@ class YOLOv1(Module):
             class_score_arr_list,
             mask=(
                 mask_batch
-                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
             )
         ).reshape([-1, C])
 
@@ -340,7 +340,7 @@ class YOLOv1(Module):
             class_true_arr_list,
             mask=(
                 mask_batch
-                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
             )
         ).reshape([-1, C])
 
