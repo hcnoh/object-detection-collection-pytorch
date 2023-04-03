@@ -311,11 +311,11 @@ class YOLOv1(Module):
         )
         loss = torch.masked_select(loss, mask=mask_batch.bool()).mean()
 
-        # iou_list: [N, L, S, S, B] -> [L']
+        # iou_list: [N, L, S, S, B] -> [L', 1]
         iou_list = torch.masked_select(
             iou_batch,
             mask=mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
-        )
+        ).reshape([-1, 1])
 
         # class_score_arr_list: [N, L, S, S, B, C] -> [L', C]
         class_score_arr_list = (
