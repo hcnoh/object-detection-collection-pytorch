@@ -90,10 +90,10 @@ def get_aps(
 
         if np.sum(mask) != 0:
             masked_class_true_arr_list = (
-                class_true_arr_list[np.where(mask == 1)][0]
+                class_true_arr_list[np.where(mask == 1)[0]]
             )
             masked_class_score_arr_list = (
-                class_score_arr_list[np.where(mask == 1)][0]
+                class_score_arr_list[np.where(mask == 1)[0]]
             )
 
             AP = average_precision_score(
