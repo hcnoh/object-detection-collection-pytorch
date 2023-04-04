@@ -1,6 +1,7 @@
 import os
 import datetime
 import json
+import warnings
 
 import torch
 import torch.cuda
@@ -11,6 +12,8 @@ from torch.utils.data import DataLoader
 from config import DEVICE, BATCH_SIZE, MODEL_CONFIG, TRAIN_CONFIG
 from data_loaders.voc2012 import VOC2012
 from models.yolov1 import YOLOv1
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def main():
