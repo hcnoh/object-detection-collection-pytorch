@@ -80,18 +80,26 @@ def get_aps(
 ):
     '''
         Args:
-            iou_list: [L, B]
-            class_true_arr_list: [L, B, C]
-            class_score_arr_list: [L, B, C]
+            iou_list: [L, 1]
+            class_true_arr_list: [L, C]
+            class_score_arr_list: [L, C]
     '''
     aps = {}
     for level in level_list:
-        mask = iou_list >= level
+        mask = (iou_list >= level)
 
         if np.sum(mask) != 0:
+            masked_class_true_arr_list = (
+                class_true_arr_list[np.where(mask == 1)][0]
+            )
+            masked_class_score_arr_list = (
+                class_score_arr_list[np.where(mask == 1)][0]
+            )
+
             AP = average_precision_score(
-                (class_true_arr_list * (iou_list >= level)).flatten(),
-                (class_score_arr_list * (iou_list >= level)).flatten(),
+                masked_class_true_arr_list,
+                masked_class_score_arr_list,
+                average="macro",
             )
 
             aps[level] = AP

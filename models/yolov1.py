@@ -97,14 +97,14 @@ class YOLOv1(Module):
 
         # bx_norm_pred_batch, by_norm_pred_batch,
         # bw_norm_pred_batch, bh_norm_pred_batch: [N, S, S, B]
-        # c_pred_batch: [N, S, S, B]
-        # pc_arr_pred_batch: [N, S, S, C]
+        # conf_score_pred_batch: [N, S, S, B]
+        # cond_cls_prob_pred_batch: [N, S, S, C]
         bx_norm_pred_batch = y_pred_batch[:, :, :, 0:B * 5:5]
         by_norm_pred_batch = y_pred_batch[:, :, :, 1:B * 5:5]
         bw_norm_pred_batch = y_pred_batch[:, :, :, 2:B * 5:5]
         bh_norm_pred_batch = y_pred_batch[:, :, :, 3:B * 5:5]
-        c_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
-        pc_arr_pred_batch = y_pred_batch[:, :, :, -C:]
+        conf_score_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
+        cond_cls_prob_pred_batch = y_pred_batch[:, :, :, -C:]
 
         # i_arr: [1, S, 1]
         # j_arr: [1, 1, S]
@@ -181,7 +181,7 @@ class YOLOv1(Module):
             x2_pred_batch.unsqueeze(1),
             y1_pred_batch.unsqueeze(1),
             y2_pred_batch.unsqueeze(1),
-        )
+        ).detach()
 
         # responsible_bndbox_mask_batch: [N, L, S, S, B]
         responsible_bndbox_mask_batch = (
@@ -229,8 +229,8 @@ class YOLOv1(Module):
             torch.tensor(0.).to(DEVICE)
         )
 
-        # pc_arr_tgt_batch: [N, L, C]
-        pc_arr_tgt_batch = one_hot(cls_idx_batch, C)
+        # cond_cls_prob_tgt_batch: [N, L, C]
+        cond_cls_prob_tgt_batch = one_hot(cls_idx_batch, C)
 
         # loss_xy: [N, L, S, S, B] -> [N, L]
         loss_xy = (
@@ -272,42 +272,42 @@ class YOLOv1(Module):
             (loss_wh * responsible_bndbox_mask_batch).sum(-1).sum(-1).sum(-1)
         )
 
-        # loss_confidence: [N, L, S, S, B] -> [N, L]
-        loss_confidence = (
-            iou_batch - c_pred_batch.unsqueeze(1)
+        # loss_conf: [N, L, S, S, B] -> [N, L]
+        loss_conf = (
+            iou_batch - conf_score_pred_batch.unsqueeze(1)
         ) ** 2
-        loss_confidence = (
-            (loss_confidence * responsible_bndbox_mask_batch)
+        loss_conf = (
+            (loss_conf * responsible_bndbox_mask_batch)
             .sum(-1).sum(-1).sum(-1)
         )
 
         # loss_noobj: [N, L, S, S, B] -> [N, L]
         loss_noobj = (
             0 -
-            c_pred_batch.unsqueeze(1).repeat(1, L, 1, 1, 1)
+            conf_score_pred_batch.unsqueeze(1).repeat(1, L, 1, 1, 1)
         ) ** 2
         loss_noobj = (
             (loss_noobj * not_responsible_bndbox_mask_batch)
             .sum(-1).sum(-1).sum(-1)
         )
 
-        # loss_class: [N, L, S, S, C] -> [N, L, S, S] -> [N, L]
-        loss_class = (
-            pc_arr_tgt_batch.unsqueeze(-2).unsqueeze(-2) -
-            pc_arr_pred_batch.unsqueeze(1)
+        # loss_cls: [N, L, S, S, C] -> [N, L, S, S] -> [N, L]
+        loss_cls = (
+            cond_cls_prob_tgt_batch.unsqueeze(-2).unsqueeze(-2) -
+            cond_cls_prob_pred_batch.unsqueeze(1)
         ) ** 2
-        loss_class = loss_class.sum(-1)
-        loss_class = (
-            (loss_class * responsible_grid_cell_mask_batch).sum(-1).sum(-1)
+        loss_cls = loss_cls.sum(-1)
+        loss_cls = (
+            (loss_cls * responsible_grid_cell_mask_batch).sum(-1).sum(-1)
         )
 
         # loss: [N, L] -> []
         loss = (
             lambda_coord * loss_xy +
             lambda_coord * loss_wh +
-            loss_confidence +
+            loss_conf +
             lambda_noobj * loss_noobj +
-            loss_class
+            loss_cls
         )
         loss = torch.masked_select(loss, mask=mask_batch.bool()).mean()
 
@@ -317,10 +317,16 @@ class YOLOv1(Module):
             mask=mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
         ).reshape([-1, 1])
 
+        # cls_spec_conf_score_pred_batch: [N, S, S, B, C]
+        cls_spec_conf_score_pred_batch = (
+            cond_cls_prob_pred_batch.unsqueeze(-2) *
+            conf_score_pred_batch.unsqueeze(-1)
+        )
+
         # class_score_arr_list: [N, L, S, S, B, C] -> [L', C]
         class_score_arr_list = (
-            pc_arr_pred_batch
-            .unsqueeze(1).unsqueeze(-2).repeat(1, L, 1, 1, B, 1)
+            cls_spec_conf_score_pred_batch
+            .unsqueeze(1).repeat(1, L, 1, 1, 1, 1)
         )
         class_score_arr_list = torch.masked_select(
             class_score_arr_list,
@@ -332,7 +338,7 @@ class YOLOv1(Module):
 
         # class_true_arr_list: [N, L, S, S, B, C] -> [L', C]
         class_true_arr_list = (
-            pc_arr_tgt_batch
+            cond_cls_prob_tgt_batch
             .unsqueeze(-2).unsqueeze(-2).unsqueeze(-2)
             .repeat(1, 1, S, S, B, 1)
         )
@@ -432,8 +438,8 @@ class YOLOv1(Module):
 
         train_loss_mean = np.mean(train_loss_mean)
 
-        # iou_list: [L, B]
-        # class_true_arr_list, class_score_arr_list: [L, B, C]
+        # iou_list: [L', 1]
+        # class_true_arr_list, class_score_arr_list: [L', C]
         train_iou_list = np.vstack(train_iou_list)
         train_class_true_arr_list = np.vstack(train_class_true_arr_list)
         train_class_score_arr_list = np.vstack(train_class_score_arr_list)
@@ -507,8 +513,8 @@ class YOLOv1(Module):
 
         val_loss_mean = np.mean(val_loss_mean)
 
-        # iou_list: [L, B]
-        # val_true_arr_list, val_score_arr_list: [L, B, C]
+        # iou_list: [L', 1]
+        # class_true_arr_list, class_score_arr_list: [L', C]
         val_iou_list = np.vstack(val_iou_list)
         val_class_true_arr_list = np.vstack(val_class_true_arr_list)
         val_class_score_arr_list = np.vstack(val_class_score_arr_list)
