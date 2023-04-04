@@ -316,9 +316,9 @@ class YOLOv1(Module):
             iou_batch,
             mask=(
                 (
-                    mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
-                    obj_grid_cell_mask_batch.unsqueeze(-1)
-                    # mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                    # mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
+                    # obj_grid_cell_mask_batch.unsqueeze(-1)
+                    mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 )
             ).bool()
         ).reshape([-1, 1])
@@ -338,12 +338,12 @@ class YOLOv1(Module):
             class_score_arr_list,
             mask=(
                 (
-                    mask_batch
-                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
-                    obj_grid_cell_mask_batch
-                    .unsqueeze(-1).unsqueeze(-1)
                     # mask_batch
-                    # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                    # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
+                    # obj_grid_cell_mask_batch
+                    # .unsqueeze(-1).unsqueeze(-1)
+                    mask_batch
+                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 )
             ).bool()
         ).reshape([-1, C])
@@ -358,12 +358,12 @@ class YOLOv1(Module):
             class_true_arr_list,
             mask=(
                 (
-                    mask_batch
-                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
-                    obj_grid_cell_mask_batch
-                    .unsqueeze(-1).unsqueeze(-1)
                     # mask_batch
-                    # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                    # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
+                    # obj_grid_cell_mask_batch
+                    # .unsqueeze(-1).unsqueeze(-1)
+                    mask_batch
+                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 )
             ).bool()
         ).reshape([-1, C])
