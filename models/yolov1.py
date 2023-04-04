@@ -128,12 +128,17 @@ class YOLOv1(Module):
         bx_tgt_batch = tgt_batch[:, :, 4].unsqueeze(-1).unsqueeze(-1)
         by_tgt_batch = tgt_batch[:, :, 5].unsqueeze(-1).unsqueeze(-1)
 
-        # responsible_grid_cell_mask_batch: [N, L, S, S]
-        responsible_grid_cell_mask_batch = (
+        # obj_grid_cell_mask_batch: [N, L, S, S]
+        obj_grid_cell_mask_batch = (
             (bx_tgt_batch >= j_lower_bound_arr.unsqueeze(1)) *
             (bx_tgt_batch < j_upper_bound_arr.unsqueeze(1)) *
             (by_tgt_batch >= i_lower_bound_arr.unsqueeze(1)) *
             (by_tgt_batch < i_upper_bound_arr.unsqueeze(1))
+        )
+
+        # noobj_grid_cell_mask_batch: [N, L, S, S]
+        noobj_grid_cell_mask_batch = (
+            obj_grid_cell_mask_batch == 0
         )
 
         # bx_pred_batch, by_pred_batch,
@@ -189,12 +194,7 @@ class YOLOv1(Module):
         )
         responsible_bndbox_mask_batch = (
             responsible_bndbox_mask_batch *
-            responsible_grid_cell_mask_batch.unsqueeze(-1)
-        )
-
-        # not_responsible_bndbox_mask_batch: [N, L, S, S, B]
-        not_responsible_bndbox_mask_batch = (
-            responsible_bndbox_mask_batch == 0
+            obj_grid_cell_mask_batch.unsqueeze(-1)
         )
 
         # bx_norm_tgt_batch, by_norm_tgt_batch,
@@ -287,7 +287,7 @@ class YOLOv1(Module):
             conf_score_pred_batch.unsqueeze(1).repeat(1, L, 1, 1, 1)
         ) ** 2
         loss_noobj = (
-            (loss_noobj * not_responsible_bndbox_mask_batch)
+            (loss_noobj * noobj_grid_cell_mask_batch.unsqueeze(-1))
             .sum(-1).sum(-1).sum(-1)
         )
 
@@ -298,7 +298,7 @@ class YOLOv1(Module):
         ) ** 2
         loss_cls = loss_cls.sum(-1)
         loss_cls = (
-            (loss_cls * responsible_grid_cell_mask_batch).sum(-1).sum(-1)
+            (loss_cls * obj_grid_cell_mask_batch).sum(-1).sum(-1)
         )
 
         # loss: [N, L] -> []
@@ -314,7 +314,13 @@ class YOLOv1(Module):
         # iou_list: [N, L, S, S, B] -> [L', 1]
         iou_list = torch.masked_select(
             iou_batch,
-            mask=mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
+            mask=(
+                (
+                    mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
+                    obj_grid_cell_mask_batch.unsqueeze(-1)
+                    # mask_batch.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                )
+            ).bool()
         ).reshape([-1, 1])
 
         # cls_spec_conf_score_pred_batch: [N, S, S, B, C]
@@ -331,9 +337,15 @@ class YOLOv1(Module):
         class_score_arr_list = torch.masked_select(
             class_score_arr_list,
             mask=(
-                mask_batch
-                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
-            )
+                (
+                    mask_batch
+                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
+                    obj_grid_cell_mask_batch
+                    .unsqueeze(-1).unsqueeze(-1)
+                    # mask_batch
+                    # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                )
+            ).bool()
         ).reshape([-1, C])
 
         # class_true_arr_list: [N, L, S, S, B, C] -> [L', C]
@@ -345,9 +357,15 @@ class YOLOv1(Module):
         class_true_arr_list = torch.masked_select(
             class_true_arr_list,
             mask=(
-                mask_batch
-                .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).bool()
-            )
+                (
+                    mask_batch
+                    .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) *
+                    obj_grid_cell_mask_batch
+                    .unsqueeze(-1).unsqueeze(-1)
+                    # mask_batch
+                    # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                )
+            ).bool()
         ).reshape([-1, C])
 
         iou_list = iou_list.detach().cpu().numpy()
