@@ -95,7 +95,7 @@ def get_aps(
         for cls_idx in range(C):
             # selected_class_indices: [L']
             selected_class_indices = (
-                np.where(class_true_arr_list[cls_idx] == 1)[0]
+                np.where(class_true_arr_list[:, cls_idx] == 1)[0]
             )
 
             # selected_iou_list: [L']
