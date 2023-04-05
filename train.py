@@ -36,7 +36,7 @@ def main():
 
     train_config = TRAIN_CONFIG["YOLOv1"]["VOC2012"]
     with open(os.path.join(ckpt_path, "train_config.json"), "w") as f:
-        json.dump(train_config, f)
+        json.dump(train_config, f, indent=4)
 
     if DEVICE == "cuda" and not torch.cuda.is_available():
         print("error")
