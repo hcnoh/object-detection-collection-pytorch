@@ -101,15 +101,15 @@ def get_aps(
             # selected_iou_list: [L']
             # selected_class_true_arr: [L']
             # selected_class_score_list: [L']
-            selected_iou_list = iou_list[selected_class_indices]
+            selected_iou_list = iou_list[selected_class_indices, 0]
             selected_class_true_list = class_true_arr_list[
-                selected_class_indices
+                selected_class_indices, cls_idx
             ]
             selected_class_score_list = class_score_arr_list[
-                selected_class_indices
+                selected_class_indices, cls_idx
             ]
 
-            selected_class_score_list[
+            selected_class_true_list[
                 np.where(selected_iou_list < level)[0]
             ] = 0
 
