@@ -84,30 +84,72 @@ def get_aps(
             class_true_arr_list: [L, C]
             class_score_arr_list: [L, C]
     '''
+    C = class_true_arr_list.shape[-1]
+
     aps = {}
+
     for level in level_list:
-        mask = (iou_list >= level)
 
-        if np.sum(mask) != 0:
-            masked_class_true_arr_list = (
-                class_true_arr_list[np.where(mask == 1)[0]]
-            )
-            masked_class_score_arr_list = (
-                class_score_arr_list[np.where(mask == 1)[0]]
-            )
+        aps_by_class = []
 
-            AP = average_precision_score(
-                masked_class_true_arr_list,
-                masked_class_score_arr_list,
-                average="macro",
+        for cls_idx in range(C):
+            # selected_class_indices: [L']
+            selected_class_indices = (
+                np.where(class_true_arr_list[cls_idx] == 1)[0]
             )
 
-            aps[level] = AP
+            # selected_iou_list: [L']
+            # selected_class_true_arr: [L']
+            # selected_class_score_list: [L']
+            selected_iou_list = iou_list[selected_class_indices]
+            selected_class_true_list = class_true_arr_list[
+                selected_class_indices
+            ]
+            selected_class_score_list = class_score_arr_list[
+                selected_class_indices
+            ]
 
-        else:
-            aps[level] = 0
+            selected_class_score_list[
+                np.where(selected_iou_list < level)[0]
+            ] = 0
 
-    mAP = np.mean([v for v in aps.values()])
-    aps["mAP"] = mAP
+            ap_by_class = average_precision_score(
+                selected_class_true_list,
+                selected_class_score_list,
+            )
+
+            aps_by_class.append(ap_by_class)
+
+        aps[level] = np.mean(aps_by_class)
+
+    mean_ap = np.mean([v for v in aps.values()])
+    aps["mAP"] = mean_ap
 
     return aps
+
+    # for level in level_list:
+    #     mask = (iou_list >= level)
+
+    #     if np.sum(mask) != 0:
+    #         masked_class_true_arr_list = (
+    #             class_true_arr_list[np.where(mask == 1)[0]]
+    #         )
+    #         masked_class_score_arr_list = (
+    #             class_score_arr_list[np.where(mask == 1)[0]]
+    #         )
+
+    #         AP = average_precision_score(
+    #             masked_class_true_arr_list,
+    #             masked_class_score_arr_list,
+    #             average="macro",
+    #         )
+
+    #         aps[level] = AP
+
+    #     else:
+    #         aps[level] = 0
+
+    # mAP = np.mean([v for v in aps.values()])
+    # aps["mAP"] = mAP
+
+    # return aps
