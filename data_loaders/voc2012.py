@@ -158,7 +158,7 @@ class VOC2012Dataset(Dataset):
         self.lbls = lbls
 
     def __getitem__(self, index):
-        return self.imgs[index], self.lbls[index]
+        return index, self.imgs[index], self.lbls[index]
 
     def __len__(self):
         return len(self.imgs)
