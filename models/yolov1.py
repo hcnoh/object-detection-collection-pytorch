@@ -81,7 +81,7 @@ class YOLOv1(Module):
                     - [N, S, S, 4]
                 cls_tgt_batch:
                     - the given class targets as onehot vectors
-                    - [N, C]
+                    - [N, S, S, C]
                 obj_mask_batch:
                     - the mask to indicate the object is in each grid cell
                     - [N, S, S]
@@ -230,10 +230,7 @@ class YOLOv1(Module):
         loss_noobj = (loss_noobj * noobj_mask_batch).sum(-1).sum(-1).sum(-1)
 
         # loss_cls: [N, S, S, C] -> [N]
-        loss_cls = (
-            cls_tgt_batch.unsqueeze(1).unsqueeze(1) -
-            cond_cls_prob_pred_batch
-        ) ** 2
+        loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
         loss_cls = (loss_cls * obj_mask_batch).sum(-1).sum(-1).sum(-1)
 
         # loss: [N] -> []
@@ -245,6 +242,9 @@ class YOLOv1(Module):
             loss_cls
         )
         loss = loss.mean()
+
+        # cls_tgt_batch: [N, S, S, C] -> [N, C]
+        cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
 
         # cls_spec_conf_score_pred_batch: [N, S, S, B, C]
         cls_spec_conf_score_pred_batch = (
@@ -285,7 +285,7 @@ class YOLOv1(Module):
             # x_batch_one_step: [N, H, W, 3]
             # y_tgt_batch_one_step: [N, S, S, 4]
             # coord_batch_one_step: [N, S, S, 4]
-            # cls_tgt_batch_one_step: [N, C]
+            # cls_tgt_batch_one_step: [N, S, S, C]
             # obj_mask_batch_one_step: [N, S, S]
             # img_id_batch_one_step: [N]
             (
@@ -320,6 +320,10 @@ class YOLOv1(Module):
             # y_pred_batch_one_step: [N, S, S, B * 5 + C]
             y_pred_batch_one_step = self(x_batch_one_step)
 
+            # loss_one_step: []
+            # iou_batch_one_step: [N, S, S, B]
+            # cls_tgt_batch_one_step: [N, C]
+            # cls_score_batch_one_step: [N, S, S, B, C]
             (
                 loss_one_step,
                 iou_batch_one_step,
@@ -365,7 +369,7 @@ class YOLOv1(Module):
         loss_mean = np.mean(loss_mean)
 
         # iou_batch: [N, S, S, B]
-        # cls_tgt_batch: [N, S, S, C]
+        # cls_tgt_batch: [N, C]
         # cls_score_batch: [N, S, S, B, C]
         # img_id_batch: [N]
         iou_batch = np.vstack(iou_batch)
@@ -550,7 +554,7 @@ class YOLOv1(Module):
 
                 y_tgt = np.zeros(shape=[S, S, 4])
                 coord = np.zeros(shape=[S, S, 4])
-                cls_tgt = np.zeros(shape=[C])
+                cls_tgt = np.zeros(shape=[S, S, C])
                 obj_mask = np.zeros(shape=[S, S])
 
                 x1 = bndbox.x1
@@ -584,7 +588,7 @@ class YOLOv1(Module):
                 cls = bndbox.label
                 cls_idx = self.cls2idx[cls]
 
-                cls_tgt[cls_idx] = 1
+                cls_tgt[i, j, cls_idx] = 1
 
                 obj_mask[i, j] = 1
 
@@ -603,7 +607,7 @@ class YOLOv1(Module):
         # x_batch: [N, H, W, 3]
         # y_tgt_batch: [N, S, S, 4]
         # coord_batch: [N, S, S, 4]
-        # cls_tgt_batch: [N, C]
+        # cls_tgt_batch: [N, S, S, C]
         # obj_mask_batch: [N, S, S]
         # img_id_batch: [N]
         x_batch = torch.stack(x_batch, dim=0)
