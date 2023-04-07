@@ -277,10 +277,14 @@ class YOLOv1(Module):
         # cls_tgt_batch: [M, C]
         # cls_score_batch: [M, S, S, B, C]
         # bbox_img_id_batch: [M]
-        iou_batch = iou_batch.detach().cpu().numpy()
-        cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
-        cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
-        bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
+        iou_batch = iou_batch.detach()
+        cls_tgt_batch = cls_tgt_batch.detach()
+        cls_score_batch = cls_spec_conf_score_pred_batch.detach()
+        bbox_img_id_batch = bbox_img_id_batch.detach()
+        # iou_batch = iou_batch.detach().cpu().numpy()
+        # cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
+        # cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
+        # bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
 
         return (
             loss,
@@ -410,10 +414,14 @@ class YOLOv1(Module):
         # cls_tgt_batch: [M, C]
         # cls_score_batch: [M, S, S, B, C]
         # bbox_img_id_batch: [M]
-        iou_batch = np.vstack(iou_batch)
-        cls_tgt_batch = np.vstack(cls_tgt_batch)
-        cls_score_batch = np.vstack(cls_score_batch)
-        bbox_img_id_batch = np.hstack(bbox_img_id_batch)
+        iou_batch = torch.cat(iou_batch, 0)
+        cls_tgt_batch = torch.cat(cls_tgt_batch, 0)
+        cls_score_batch = torch.cat(cls_score_batch, 0)
+        bbox_img_id_batch = torch.cat(bbox_img_id_batch, 0)
+        # iou_batch = np.vstack(iou_batch)
+        # cls_tgt_batch = np.vstack(cls_tgt_batch)
+        # cls_score_batch = np.vstack(cls_score_batch)
+        # bbox_img_id_batch = np.hstack(bbox_img_id_batch)
 
         aps = get_aps(
             iou_batch,
