@@ -179,7 +179,7 @@ def get_aps(
         aps["APs by Class"] = aps_by_class
         aps[level] = np.mean(aps_by_class)
 
-    mean_ap = np.mean([v for v in aps.values()])
+    mean_ap = np.mean([aps[level] for level in level_list])
     aps["mAP"] = mean_ap
 
     return aps
