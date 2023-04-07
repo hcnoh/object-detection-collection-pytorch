@@ -58,7 +58,6 @@ class YOLOv1(Module):
 
     def get_loss(
         self,
-        N,
         y_pred_batch,
         y_tgt_batch,
         coord_batch,
@@ -277,6 +276,8 @@ class YOLOv1(Module):
         cls_score_batch = []
         img_id_batch = []
 
+        N = data_loader.batch_size
+
         dataset_size = len(data_loader.dataset)
         progress_size = 0
 
@@ -295,8 +296,6 @@ class YOLOv1(Module):
                 obj_mask_batch_one_step,
                 img_id_batch_one_step,
             ) = data
-
-            N = x_batch_one_step.shape[0]
 
             progress_size += N
 
@@ -327,7 +326,6 @@ class YOLOv1(Module):
                 cls_tgt_batch_one_step,
                 cls_score_batch_one_step,
             ) = self.get_loss(
-                N,
                 y_pred_batch_one_step,
                 y_tgt_batch_one_step,
                 coord_batch_one_step,
