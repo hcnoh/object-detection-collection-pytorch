@@ -399,31 +399,10 @@ class YOLOv1(Module):
                 opt.step()
 
             loss_mean.append(loss_one_step.detach().cpu().numpy())
-            # iou_batch.append(iou_batch_one_step)
-            # cls_tgt_batch.append(cls_tgt_batch_one_step)
-            # cls_score_batch.append(cls_score_batch_one_step)
-            # bbox_img_id_batch.append(bbox_img_id_batch_one_step)
 
         loss_mean = np.mean(loss_mean)
 
-        # iou_batch: [M, S, S, B]
-        # cls_tgt_batch: [M, C]
-        # cls_score_batch: [M, S, S, B, C]
-        # bbox_img_id_batch: [M]
-        # iou_batch = np.vstack(iou_batch)
-        # cls_tgt_batch = np.vstack(cls_tgt_batch)
-        # cls_score_batch = np.vstack(cls_score_batch)
-        # bbox_img_id_batch = np.hstack(bbox_img_id_batch)
-
-        # aps = get_aps(
-        #     iou_batch,
-        #     cls_tgt_batch,
-        #     cls_score_batch,
-        #     bbox_img_id_batch,
-        # )
-        aps = None
-
-        return loss_mean, aps
+        return loss_mean
 
     def train_model(
         self,
@@ -446,18 +425,15 @@ class YOLOv1(Module):
         cum_epoch = 0
 
         train_loss_mean_list = []
-        train_aps_list = []
 
         val_loss_list = []
-        val_aps_list = []
 
-        max_map = 0
         min_val_loss = 1e+10
 
         for lr, num_epochs in zip(learning_rate_list, num_epochs_list):
 
             for epoch in range(1 + cum_epoch, num_epochs + 1 + cum_epoch):
-                train_loss_mean, train_aps = self.execute_one_step(
+                train_loss_mean = self.execute_one_step(
                     epoch,
                     train_loader,
                     lambda_coord,
@@ -465,7 +441,7 @@ class YOLOv1(Module):
                     lr,
                     train=True,
                 )
-                val_loss, val_aps = self.execute_one_step(
+                val_loss = self.execute_one_step(
                     epoch,
                     val_loader,
                     lambda_coord,
@@ -477,38 +453,23 @@ class YOLOv1(Module):
                     (
                         "Epoch: {} --> " +
                         "Training: (" +
-                        "Loss Mean: {},  " +
-                        # "AP50: {},  " +
-                        # "AP75: {},  " +
-                        # "mAP: {}" +
+                        "Loss Mean: {}" +
                         ")    " +
                         "Validation: (" +
-                        "Loss: {},  " +
-                        # "AP50: {},  " +
-                        # "AP75: {},  " +
-                        # "mAP: {}" +
+                        "Loss: {}" +
                         ")"
                     )
                     .format(
                         epoch,
                         train_loss_mean,
-                        # train_aps[.50],
-                        # train_aps[.75],
-                        # train_aps["mAP"],
                         val_loss,
-                        # val_aps[.50],
-                        # val_aps[.75],
-                        # val_aps["mAP"],
                     )
                 )
 
                 train_loss_mean_list.append(train_loss_mean)
-                train_aps_list.append(train_aps)
 
                 val_loss_list.append(val_loss)
-                val_aps_list.append(val_aps)
 
-                # if val_aps["mAP"] > max_map:
                 if val_loss < min_val_loss:
                     torch.save(
                         self.state_dict(),
@@ -516,7 +477,6 @@ class YOLOv1(Module):
                             ckpt_path, "best_model.ckpt"
                         )
                     )
-                    # max_map = val_aps["mAP"]
                     min_val_loss = val_loss
 
             cum_epoch += num_epochs
@@ -535,12 +495,241 @@ class YOLOv1(Module):
             pickle.dump(
                 {
                     "train_loss_mean_list": train_loss_mean_list,
-                    "train_aps_list": train_aps_list,
                     "val_loss_list": val_loss_list,
-                    "val_aps_list": val_aps_list,
                 },
                 f
             )
+
+    def evaluate_one_step(
+        self,
+        y_pred_batch,
+        coord_batch,
+        cls_tgt_batch,
+        x_img_id_batch,
+        bbox_img_id_batch,
+    ):
+        '''
+            N: batch_size
+            M: the # of bounding boxes in the given batch
+
+            Args:
+                y_pred_batch:
+                    - the model's prediction on the given targets
+                    - [N, S, S, B * 5 + C]
+                coord_batch:
+                    - the given coordinates for the all bounding boxes
+                    - [M, S, S, 4]
+                cls_tgt_batch:
+                    - the given class targets as onehot vectors
+                    - [M, S, S, C]
+                x_img_id_batch:
+                    - the image IDs for the given input
+                    - [N]
+                bbox_img_id_batch:
+                    - the image IDs for the given bounding boxes
+                    - [M]
+        '''
+        w_in = self.w_in
+        h_in = self.h_in
+
+        S = self.S
+        B = self.B
+        C = self.C
+
+        grid_cell_w = w_in / S
+        grid_cell_h = h_in / S
+
+        # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
+        bbox_img_id_to_x_img_id_mapper = (
+            (
+                bbox_img_id_batch.unsqueeze(-1) ==
+                x_img_id_batch.unsqueeze(0)
+            ).long()
+            .argmax(-1)
+        )
+
+        # y_pred_batch: [N, S, S, B * 5 + C] -> [M, S, S, B * 5 + C]
+        y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
+
+        # bx_norm_pred_batch, by_norm_pred_batch,
+        # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
+        # conf_score_pred_batch: [M, S, S, B]
+        # cond_cls_prob_pred_batch: [M, S, S, C]
+        bx_norm_pred_batch = y_pred_batch[:, :, :, 0:B * 5:5]
+        by_norm_pred_batch = y_pred_batch[:, :, :, 1:B * 5:5]
+        bw_norm_pred_batch = y_pred_batch[:, :, :, 2:B * 5:5]
+        bh_norm_pred_batch = y_pred_batch[:, :, :, 3:B * 5:5]
+        conf_score_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
+        cond_cls_prob_pred_batch = y_pred_batch[:, :, :, -C:]
+
+        # i_arr: [1, S, 1, 1]
+        # j_arr: [1, 1, S, 1]
+        i_arr = (
+            torch.arange(S).to(DEVICE)
+            .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        )
+        j_arr = (
+            torch.arange(S).to(DEVICE)
+            .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        )
+
+        # bx_pred_batch, by_pred_batch,
+        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
+        bx_pred_batch = (
+            bx_norm_pred_batch * grid_cell_w +
+            j_arr * grid_cell_w
+        )
+        by_pred_batch = (
+            by_norm_pred_batch * grid_cell_h +
+            i_arr * grid_cell_h
+        )
+        bw_pred_batch = bw_norm_pred_batch * w_in
+        bh_pred_batch = bh_norm_pred_batch * h_in
+
+        # x1_pred_batch, x2_pred_batch,
+        # y1_pred_batch, y2_pred_batch: [M, S, S, B]
+        x1_pred_batch = bx_pred_batch - (bw_pred_batch / 2)
+        x2_pred_batch = bx_pred_batch + (bw_pred_batch / 2)
+        y1_pred_batch = by_pred_batch - (bh_pred_batch / 2)
+        y2_pred_batch = by_pred_batch + (bh_pred_batch / 2)
+
+        # x1_tgt_batch, x2_tgt_batch,
+        # y1_tgt_batch, y2_tgt_batch: [M, S, S, 1]
+        x1_tgt_batch = coord_batch[:, :, :, 0].unsqueeze(-1)
+        x2_tgt_batch = coord_batch[:, :, :, 1].unsqueeze(-1)
+        y1_tgt_batch = coord_batch[:, :, :, 2].unsqueeze(-1)
+        y2_tgt_batch = coord_batch[:, :, :, 3].unsqueeze(-1)
+
+        # iou_batch: [M, S, S, B]
+        iou_batch = get_iou(
+            x1_tgt_batch,
+            x2_tgt_batch,
+            y1_tgt_batch,
+            y2_tgt_batch,
+            x1_pred_batch,
+            x2_pred_batch,
+            y1_pred_batch,
+            y2_pred_batch,
+        ).detach()
+
+        # cls_tgt_batch: [M, S, S, C] -> [M, C]
+        cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
+
+        # cls_spec_conf_score_pred_batch: [M, S, S, B, C]
+        cls_spec_conf_score_pred_batch = (
+            cond_cls_prob_pred_batch.unsqueeze(-2) *
+            conf_score_pred_batch.unsqueeze(-1)
+        )
+
+        # iou_batch: [M, S, S, B]
+        # cls_tgt_batch: [M, C]
+        # cls_score_batch: [M, S, S, B, C]
+        # bbox_img_id_batch: [M]
+        iou_batch = iou_batch.detach().cpu().numpy()
+        cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
+        cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
+        bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
+
+        return (
+            iou_batch,
+            cls_tgt_batch,
+            cls_score_batch,
+            bbox_img_id_batch,
+        )
+
+    def evaluate_model(
+        self,
+        data_loader,
+        ckpt_path,
+    ):
+        iou_batch = []
+        cls_tgt_batch = []
+        cls_score_batch = []
+        bbox_img_id_batch = []
+
+        dataset_size = len(data_loader.dataset)
+        progress_size = 0
+
+        for batch in data_loader:
+            # N: batch_size
+            # M: the # of bboxes in the given batch
+
+            # x_batch_one_step: [N, H, W, 3]
+            # coord_batch_one_step: [M, S, S, 4]
+            # cls_tgt_batch_one_step: [M, S, S, C]
+            # x_img_id_batch_one_step: [N]
+            # bbox_img_id_batch_one_step: [M]
+            (
+                x_batch_one_step,
+                _,
+                coord_batch_one_step,
+                cls_tgt_batch_one_step,
+                _,
+                x_img_id_batch_one_step,
+                bbox_img_id_batch_one_step,
+            ) = batch
+
+            N = x_batch_one_step.shape[0]
+
+            progress_size += N
+
+            print(
+                "Evaluation: [{} / {}]".format(progress_size, dataset_size),
+                end="\r"
+            )
+
+            self.eval()
+
+            # y_pred_batch_one_step: [N, S, S, B * 5 + C]
+            y_pred_batch_one_step = self(x_batch_one_step)
+
+            # iou_batch_one_step: [M, S, S, B]
+            # cls_tgt_batch_one_step: [M, C]
+            # cls_score_batch_one_step: [M, S, S, B, C]
+            # bbox_img_id_batch_one_step: [M]
+            (
+                iou_batch_one_step,
+                cls_tgt_batch_one_step,
+                cls_score_batch_one_step,
+                bbox_img_id_batch_one_step,
+            ) = self.evaluate_one_step(
+                y_pred_batch_one_step,
+                coord_batch_one_step,
+                cls_tgt_batch_one_step,
+                x_img_id_batch_one_step,
+                bbox_img_id_batch_one_step,
+            )
+
+            iou_batch.append(iou_batch_one_step)
+            cls_tgt_batch.append(cls_tgt_batch_one_step)
+            cls_score_batch.append(cls_score_batch_one_step)
+            bbox_img_id_batch.append(bbox_img_id_batch_one_step)
+
+        # iou_batch: [M, S, S, B]
+        # cls_tgt_batch: [M, C]
+        # cls_score_batch: [M, S, S, B, C]
+        # bbox_img_id_batch: [M]
+        iou_batch = np.vstack(iou_batch)
+        cls_tgt_batch = np.vstack(cls_tgt_batch)
+        cls_score_batch = np.vstack(cls_tgt_batch)
+        bbox_img_id_batch = np.hstack(bbox_img_id_batch)
+
+        aps = get_aps(
+            iou_batch,
+            cls_tgt_batch,
+            cls_score_batch,
+            bbox_img_id_batch,
+        )
+
+        aps = self.evaluate_one_step(data_loader)
+        print("Evaluation Results:")
+        print(aps)
+
+        with open(
+            os.path.join(ckpt_path, "evaluation_result.pkl"),
+            "wb",
+        ) as f:
+            pickle.dump(aps, f)
 
     def collate_fn_with_imgaug(self, batch):
         return self.collate_fn(batch, augmentation=True)
@@ -650,6 +839,7 @@ class YOLOv1(Module):
 
         # N: batch_size
         # M: the # of bboxes in the given batch
+
         # x_batch: [N, H, W, 3]
         # y_tgt_batch: [M, S, S, 4]
         # coord_batch: [M, S, S, 4]
