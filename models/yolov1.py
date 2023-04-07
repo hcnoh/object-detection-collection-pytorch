@@ -262,7 +262,7 @@ class YOLOv1(Module):
             lambda_noobj * loss_noobj +
             loss_cls
         )
-        loss = loss.mean()
+        loss = loss.sum()
 
         # cls_tgt_batch: [M, S, S, C] -> [M, C]
         cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
