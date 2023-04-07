@@ -60,9 +60,9 @@ class VOC2012:
         if os.path.exists(self.preprocessed_dataset_path):
             with open(self.preprocessed_dataset_path, "rb") as f:
                 (
-                    self.train_imgs,
+                    self.train_img_paths,
                     self.train_lbls,
-                    self.val_imgs,
+                    self.val_img_paths,
                     self.val_lbls,
                     self.cls_list,
                     self.cls2idx,
@@ -71,8 +71,12 @@ class VOC2012:
         else:
             self.preprocess()
 
-        self.train_dataset = VOC2012Dataset(self.train_imgs, self.train_lbls)
-        self.val_dataset = VOC2012Dataset(self.val_imgs, self.val_lbls)
+        self.train_dataset = VOC2012Dataset(
+            self.train_img_paths, self.train_lbls
+        )
+        self.val_dataset = VOC2012Dataset(
+            self.val_img_paths, self.val_lbls
+        )
 
     def preprocess(self):
         self.train_img_paths = []
@@ -133,7 +137,7 @@ class VOC2012:
 
             for obj in objects:
                 name = obj.find("name").text
-                bbox = obj.find("bbox")
+                bbox = obj.find("bndbox")
 
                 x1 = int(bbox.find("xmin").text)
                 x2 = int(bbox.find("xmax").text)
