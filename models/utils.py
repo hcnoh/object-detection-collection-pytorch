@@ -125,7 +125,7 @@ def get_aps(
             tp_list = []
             score_list = []
 
-            for img_id in torch.unique(selected_img_id_batch.output):
+            for img_id in torch.unique(selected_img_id_batch).output:
                 # one_img_indices: [L]
                 one_img_indices = torch.where(selected_img_id_batch == img_id)
 
