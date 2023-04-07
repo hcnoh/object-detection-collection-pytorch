@@ -567,8 +567,8 @@ class YOLOv1(Module):
                 bw = x2 - x1
                 bh = y2 - y1
 
-                j = bx // grid_cell_w
-                i = by // grid_cell_h
+                j = int(bx // grid_cell_w)
+                i = int(by // grid_cell_h)
 
                 bx_norm = (bx % grid_cell_w) / grid_cell_w
                 by_norm = (by % grid_cell_h) / grid_cell_h
