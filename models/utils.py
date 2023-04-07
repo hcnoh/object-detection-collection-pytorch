@@ -176,7 +176,7 @@ def get_aps(
 
             aps_by_class.append(ap)
 
-        aps["APs by Class": aps_by_class]
+        aps["APs by Class"] = aps_by_class
         aps[level] = np.mean(aps_by_class)
 
     mean_ap = np.mean([v for v in aps.values()])
