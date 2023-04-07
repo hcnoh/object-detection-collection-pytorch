@@ -63,28 +63,37 @@ class YOLOv1(Module):
         coord_batch,
         cls_tgt_batch,
         obj_mask_batch,
+        x_img_id_batch,
+        bbox_img_id_batch,
         lambda_coord,
         lambda_noobj,
     ):
         '''
+            N: batch_size
+            M: the # of bounding boxes in the given batch
+
             Args:
-                N:
-                    - the # of bounding boxes in the whole batch
                 y_pred_batch:
                     - the model's prediction on the given targets
                     - [N, S, S, B * 5 + C]
                 y_tgt_batch:
                     - the given targets
-                    - [N, S, S, 4]
+                    - [M, S, S, 4]
                 coord_batch:
                     - the given coordinates for the all bounding boxes
-                    - [N, S, S, 4]
+                    - [M, S, S, 4]
                 cls_tgt_batch:
                     - the given class targets as onehot vectors
-                    - [N, S, S, C]
+                    - [M, S, S, C]
                 obj_mask_batch:
                     - the mask to indicate the object is in each grid cell
-                    - [N, S, S]
+                    - [M, S, S]
+                x_img_id_batch:
+                    - the image IDs for the given input
+                    - [N]
+                bbox_img_id_batch:
+                    - the image IDs for the given bounding boxes
+                    - [M]
         '''
         w_in = self.w_in
         h_in = self.h_in
@@ -96,10 +105,19 @@ class YOLOv1(Module):
         grid_cell_w = w_in / S
         grid_cell_h = h_in / S
 
+        # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
+        bbox_img_id_to_x_img_id_mapper = (
+            (bbox_img_id_batch.unsqueeze(-1) == x_img_id_batch.unsqueeze(0))
+            .argmax(-1)
+        )
+
+        # y_pred_batch: [N, S, S, B * 5 + C] -> [M, S, S, B * 5 + C]
+        y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
+
         # bx_norm_pred_batch, by_norm_pred_batch,
-        # bw_norm_pred_batch, bh_norm_pred_batch: [N, S, S, B]
-        # conf_score_pred_batch: [N, S, S, B]
-        # cond_cls_prob_pred_batch: [N, S, S, C]
+        # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
+        # conf_score_pred_batch: [M, S, S, B]
+        # cond_cls_prob_pred_batch: [M, S, S, C]
         bx_norm_pred_batch = y_pred_batch[:, :, :, 0:B * 5:5]
         by_norm_pred_batch = y_pred_batch[:, :, :, 1:B * 5:5]
         bw_norm_pred_batch = y_pred_batch[:, :, :, 2:B * 5:5]
@@ -108,7 +126,7 @@ class YOLOv1(Module):
         cond_cls_prob_pred_batch = y_pred_batch[:, :, :, -C:]
 
         # bx_norm_tgt_batch, by_norm_tgt_batch,
-        # bw_norm_tgt_batch, bh_norm_tgt_batch: [N, S, S, 1]
+        # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, 1]
         bx_norm_tgt_batch = y_tgt_batch[:, :, :, 0].unsqueeze(-1)
         by_norm_tgt_batch = y_tgt_batch[:, :, :, 1].unsqueeze(-1)
         bw_norm_tgt_batch = y_tgt_batch[:, :, :, 2].unsqueeze(-1)
@@ -139,8 +157,8 @@ class YOLOv1(Module):
             torch.tensor(0.).to(DEVICE)
         )
 
-        # obj_mask_batch: [N, S, S, 1]
-        # noobj_mask_batch: [N, S, S, 1]
+        # obj_mask_batch: [M, S, S, 1]
+        # noobj_mask_batch: [M, S, S, 1]
         obj_mask_batch = obj_mask_batch.unsqueeze(-1)
         noobj_mask_batch = (obj_mask_batch != 1)
 
@@ -156,7 +174,7 @@ class YOLOv1(Module):
         )
 
         # bx_pred_batch, by_pred_batch,
-        # bw_pred_batch, bh_pred_batch: [N, S, S, B]
+        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
         bx_pred_batch = (
             bx_norm_pred_batch * grid_cell_w +
             j_arr * grid_cell_w
@@ -169,20 +187,20 @@ class YOLOv1(Module):
         bh_pred_batch = bh_norm_pred_batch * h_in
 
         # x1_pred_batch, x2_pred_batch,
-        # y1_pred_batch, y2_pred_batch: [N, S, S, B]
+        # y1_pred_batch, y2_pred_batch: [M, S, S, B]
         x1_pred_batch = bx_pred_batch - (bw_pred_batch / 2)
         x2_pred_batch = bx_pred_batch + (bw_pred_batch / 2)
         y1_pred_batch = by_pred_batch - (bh_pred_batch / 2)
         y2_pred_batch = by_pred_batch + (bh_pred_batch / 2)
 
         # x1_tgt_batch, x2_tgt_batch,
-        # y1_tgt_batch, y2_tgt_batch: [N, S, S, 1]
+        # y1_tgt_batch, y2_tgt_batch: [M, S, S, 1]
         x1_tgt_batch = coord_batch[:, :, :, 0].unsqueeze(-1)
         x2_tgt_batch = coord_batch[:, :, :, 1].unsqueeze(-1)
         y1_tgt_batch = coord_batch[:, :, :, 2].unsqueeze(-1)
         y2_tgt_batch = coord_batch[:, :, :, 3].unsqueeze(-1)
 
-        # iou_batch: [N, S, S, B]
+        # iou_batch: [M, S, S, B]
         iou_batch = get_iou(
             x1_tgt_batch,
             x2_tgt_batch,
@@ -194,23 +212,23 @@ class YOLOv1(Module):
             y2_pred_batch,
         ).detach()
 
-        # max_iou_by_grid_cell_batch: [N, S, S, 1]
+        # max_iou_by_grid_cell_batch: [M, S, S, 1]
         max_iou_by_grid_cell_batch = (
             torch.max(iou_batch, dim=-1, keepdim=True).values
         )
 
-        # responsible_mask_batch: [N, S, S, B]
+        # responsible_mask_batch: [M, S, S, B]
         responsible_mask_batch = (iou_batch == max_iou_by_grid_cell_batch)
         responsible_mask_batch = (responsible_mask_batch * obj_mask_batch)
 
-        # loss_xy: [N, S, S, B] -> [N]
+        # loss_xy: [M, S, S, B] -> [M]
         loss_xy = (
             (bx_norm_tgt_batch - bx_norm_pred_batch) ** 2 +
             (by_norm_tgt_batch - by_norm_pred_batch) ** 2
         )
         loss_xy = (loss_xy * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
 
-        # loss_wh: [N, S, S, B] -> [N]
+        # loss_wh: [M, S, S, B] -> [M]
         loss_wh = (
             (
                 torch.sqrt(bw_norm_tgt_batch) - torch.sqrt(bw_norm_pred_batch)
@@ -221,19 +239,19 @@ class YOLOv1(Module):
         )
         loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
 
-        # loss_conf: [N, S, S, B] -> [N]
+        # loss_conf: [M, S, S, B] -> [M]
         loss_conf = (iou_batch - conf_score_pred_batch) ** 2
         loss_conf = (loss_conf * obj_mask_batch).sum(-1).sum(-1).sum(-1)
 
-        # loss_noobj: [N, S, S, B] -> [N]
+        # loss_noobj: [M, S, S, B] -> [M]
         loss_noobj = (0 - conf_score_pred_batch) ** 2
         loss_noobj = (loss_noobj * noobj_mask_batch).sum(-1).sum(-1).sum(-1)
 
-        # loss_cls: [N, S, S, C] -> [N]
+        # loss_cls: [M, S, S, C] -> [M]
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
         loss_cls = (loss_cls * obj_mask_batch).sum(-1).sum(-1).sum(-1)
 
-        # loss: [N] -> []
+        # loss: [M] -> []
         loss = (
             lambda_coord * loss_xy +
             lambda_coord * loss_wh +
@@ -243,23 +261,31 @@ class YOLOv1(Module):
         )
         loss = loss.mean()
 
-        # cls_tgt_batch: [N, S, S, C] -> [N, C]
+        # cls_tgt_batch: [M, S, S, C] -> [M, C]
         cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
 
-        # cls_spec_conf_score_pred_batch: [N, S, S, B, C]
+        # cls_spec_conf_score_pred_batch: [M, S, S, B, C]
         cls_spec_conf_score_pred_batch = (
             cond_cls_prob_pred_batch.unsqueeze(-2) *
             conf_score_pred_batch.unsqueeze(-1)
         )
 
-        # iou_batch: [N, S, S, B]
-        # cls_tgt_batch: [N, C]
-        # cls_score_batch: [N, S, S, B, C]
+        # iou_batch: [M, S, S, B]
+        # cls_tgt_batch: [M, C]
+        # cls_score_batch: [M, S, S, B, C]
+        # bbox_img_id_batch: [M]
         iou_batch = iou_batch.detach().cpu().numpy()
         cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
         cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
+        bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
 
-        return loss, iou_batch, cls_tgt_batch, cls_score_batch
+        return (
+            loss,
+            iou_batch,
+            cls_tgt_batch,
+            cls_score_batch,
+            bbox_img_id_batch,
+        )
 
     def execute_one_step(
         self,
@@ -274,28 +300,33 @@ class YOLOv1(Module):
         iou_batch = []
         cls_tgt_batch = []
         cls_score_batch = []
-        img_id_batch = []
+        bbox_img_id_batch = []
 
         N = data_loader.batch_size
 
         dataset_size = len(data_loader.dataset)
         progress_size = 0
 
-        for data in data_loader:
+        for batch in data_loader:
+            # N: batch_size
+            # M: the # of bboxes in the given batch
+
             # x_batch_one_step: [N, H, W, 3]
-            # y_tgt_batch_one_step: [N, S, S, 4]
-            # coord_batch_one_step: [N, S, S, 4]
-            # cls_tgt_batch_one_step: [N, S, S, C]
-            # obj_mask_batch_one_step: [N, S, S]
-            # img_id_batch_one_step: [N]
+            # y_tgt_batch_one_step: [M, S, S, 4]
+            # coord_batch_one_step: [M, S, S, 4]
+            # cls_tgt_batch_one_step: [M, S, S, C]
+            # obj_mask_batch_one_step: [M, S, S]
+            # x_img_id_batch_one_step: [N]
+            # bbox_img_id_batch_one_step: [M]
             (
                 x_batch_one_step,
                 y_tgt_batch_one_step,
                 coord_batch_one_step,
                 cls_tgt_batch_one_step,
                 obj_mask_batch_one_step,
-                img_id_batch_one_step,
-            ) = data
+                x_img_id_batch_one_step,
+                bbox_img_id_batch_one_step,
+            ) = batch
 
             progress_size += N
 
@@ -321,20 +352,24 @@ class YOLOv1(Module):
             y_pred_batch_one_step = self(x_batch_one_step)
 
             # loss_one_step: []
-            # iou_batch_one_step: [N, S, S, B]
-            # cls_tgt_batch_one_step: [N, C]
-            # cls_score_batch_one_step: [N, S, S, B, C]
+            # iou_batch_one_step: [M, S, S, B]
+            # cls_tgt_batch_one_step: [M, C]
+            # cls_score_batch_one_step: [M, S, S, B, C]
+            # bbox_img_id_batch_one_step: [M]
             (
                 loss_one_step,
                 iou_batch_one_step,
                 cls_tgt_batch_one_step,
                 cls_score_batch_one_step,
+                bbox_img_id_batch_one_step,
             ) = self.get_loss(
                 y_pred_batch_one_step,
                 y_tgt_batch_one_step,
                 coord_batch_one_step,
                 cls_tgt_batch_one_step,
                 obj_mask_batch_one_step,
+                x_img_id_batch_one_step,
+                bbox_img_id_batch_one_step,
                 lambda_coord,
                 lambda_noobj,
             )
@@ -364,24 +399,24 @@ class YOLOv1(Module):
             iou_batch.append(iou_batch_one_step)
             cls_tgt_batch.append(cls_tgt_batch_one_step)
             cls_score_batch.append(cls_score_batch_one_step)
-            img_id_batch.append(img_id_batch_one_step)
+            bbox_img_id_batch.append(bbox_img_id_batch_one_step)
 
         loss_mean = np.mean(loss_mean)
 
-        # iou_batch: [N, S, S, B]
-        # cls_tgt_batch: [N, C]
-        # cls_score_batch: [N, S, S, B, C]
-        # img_id_batch: [N]
+        # iou_batch: [M, S, S, B]
+        # cls_tgt_batch: [M, C]
+        # cls_score_batch: [M, S, S, B, C]
+        # bbox_img_id_batch: [M]
         iou_batch = np.vstack(iou_batch)
         cls_tgt_batch = np.vstack(cls_tgt_batch)
         cls_score_batch = np.vstack(cls_score_batch)
-        img_id_batch = np.hstack(img_id_batch)
+        bbox_img_id_batch = np.hstack(bbox_img_id_batch)
 
         aps = get_aps(
             iou_batch,
             cls_tgt_batch,
             cls_score_batch,
-            img_id_batch,
+            bbox_img_id_batch,
         )
 
         return loss_mean, aps
@@ -527,40 +562,43 @@ class YOLOv1(Module):
         coord_batch = []
         cls_tgt_batch = []
         obj_mask_batch = []
-        img_id_batch = []
+        x_img_id_batch = []
+        bbox_img_id_batch = []
 
-        for img_id, img, bndbox_list in batch:
+        for img_id, img, bbox_list in batch:
             img = np.array(img)
 
             if augmentation:
-                img_aug, bndbox_aug_list = augmenter(
-                    image=img, bounding_boxes=bndbox_list
+                img_aug, bbox_aug_list = augmenter(
+                    image=img, bounding_boxes=bbox_list
                 )
 
-                bndbox_aug_list = (
-                    bndbox_aug_list
+                bbox_aug_list = (
+                    bbox_aug_list
                     .remove_out_of_image().clip_out_of_image()
                 )
 
             else:
-                img_aug, bndbox_aug_list = img, bndbox_list
+                img_aug, bbox_aug_list = img, bbox_list
 
-            img_aug, bndbox_aug_list = resize(
-                image=img_aug, bounding_boxes=bndbox_aug_list
+            img_aug, bbox_aug_list = resize(
+                image=img_aug, bounding_boxes=bbox_aug_list
             )
 
-            for bndbox in bndbox_aug_list:
-                x = torch.tensor(img_aug).to(DEVICE)
+            x = torch.tensor(img_aug).to(DEVICE)
+            x_batch.append(x)
+            x_img_id_batch.append(img_id)
 
+            for bbox in bbox_aug_list:
                 y_tgt = np.zeros(shape=[S, S, 4])
                 coord = np.zeros(shape=[S, S, 4])
                 cls_tgt = np.zeros(shape=[S, S, C])
                 obj_mask = np.zeros(shape=[S, S])
 
-                x1 = bndbox.x1
-                x2 = bndbox.x2
-                y1 = bndbox.y1
-                y2 = bndbox.y2
+                x1 = bbox.x1
+                x2 = bbox.x2
+                y1 = bbox.y1
+                y2 = bbox.y2
 
                 bx = (x1 + x2) / 2
                 by = (y1 + y2) / 2
@@ -585,7 +623,7 @@ class YOLOv1(Module):
                 coord[i, j, 2] = y1
                 coord[i, j, 3] = y2
 
-                cls = bndbox.label
+                cls = bbox.label
                 cls_idx = self.cls2idx[cls]
 
                 cls_tgt[i, j, cls_idx] = 1
@@ -597,25 +635,28 @@ class YOLOv1(Module):
                 cls_tgt = torch.tensor(cls_tgt).to(DEVICE)
                 obj_mask = torch.tensor(obj_mask).to(DEVICE)
 
-                x_batch.append(x)
                 y_tgt_batch.append(y_tgt)
                 coord_batch.append(coord)
                 cls_tgt_batch.append(cls_tgt)
                 obj_mask_batch.append(obj_mask)
-                img_id_batch.append(img_id)
+                bbox_img_id_batch.append(img_id)
 
+        # N: batch_size
+        # M: the # of bboxes in the given batch
         # x_batch: [N, H, W, 3]
-        # y_tgt_batch: [N, S, S, 4]
-        # coord_batch: [N, S, S, 4]
-        # cls_tgt_batch: [N, S, S, C]
-        # obj_mask_batch: [N, S, S]
-        # img_id_batch: [N]
+        # y_tgt_batch: [M, S, S, 4]
+        # coord_batch: [M, S, S, 4]
+        # cls_tgt_batch: [M, S, S, C]
+        # obj_mask_batch: [M, S, S]
+        # x_img_id_batch: [N]
+        # bbox_img_id_batch: [M]
         x_batch = torch.stack(x_batch, dim=0)
         y_tgt_batch = torch.stack(y_tgt_batch, dim=0)
         coord_batch = torch.stack(coord_batch, dim=0)
         cls_tgt_batch = torch.stack(cls_tgt_batch, dim=0)
         obj_mask_batch = torch.stack(obj_mask_batch, dim=0)
-        img_id_batch = np.array(img_id_batch)
+        x_img_id_batch = torch.tensor(x_img_id_batch).to(DEVICE)
+        bbox_img_id_batch = torch.tensor(bbox_img_id_batch).to(DEVICE)
 
         return (
             x_batch,
@@ -623,5 +664,6 @@ class YOLOv1(Module):
             coord_batch,
             cls_tgt_batch,
             obj_mask_batch,
-            img_id_batch,
+            x_img_id_batch,
+            bbox_img_id_batch,
         )

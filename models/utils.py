@@ -35,7 +35,7 @@ def get_iou(
     return iou_arr
 
 
-def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox):
+def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox):
     x1_hat_arr = x_hat_arr - (w_hat_arr / 2)
     x2_hat_arr = x_hat_arr + (w_hat_arr / 2)
     y1_hat_arr = y_hat_arr - (h_hat_arr / 2)
@@ -43,19 +43,19 @@ def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox):
 
     intersection_arr = (
         np.maximum(
-            np.minimum(bndbox.x2, x2_hat_arr) -
-            np.maximum(bndbox.x1, x1_hat_arr),
+            np.minimum(bbox.x2, x2_hat_arr) -
+            np.maximum(bbox.x1, x1_hat_arr),
             0
         ) *
         np.maximum(
-            np.minimum(bndbox.y2, y2_hat_arr) -
-            np.maximum(bndbox.y1, y1_hat_arr),
+            np.minimum(bbox.y2, y2_hat_arr) -
+            np.maximum(bbox.y1, y1_hat_arr),
             0
         )
     )
     union_arr = (
         (x2_hat_arr - x1_hat_arr) * (y2_hat_arr - y1_hat_arr) +
-        (bndbox.x2 - bndbox.x1) * (bndbox.y2 - bndbox.y1) -
+        (bbox.x2 - bbox.x1) * (bbox.y2 - bbox.y1) -
         intersection_arr
     )
 
@@ -64,8 +64,8 @@ def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox):
     return iou_arr
 
 
-def get_max_iou_indices(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox):
-    iou_arr = get_iou(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bndbox)
+def get_max_iou_indices(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox):
+    iou_arr = get_iou(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox)
 
     max_iou = np.max(iou_arr)
 

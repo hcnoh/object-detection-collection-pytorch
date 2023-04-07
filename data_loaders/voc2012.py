@@ -90,7 +90,7 @@ class VOC2012:
                 self.train_imgs.append(img)
                 self.train_lbls.append(lbl)
 
-                cls_list.extend([bndbox.label for bndbox in lbl])
+                cls_list.extend([bbox.label for bbox in lbl])
 
         with open(self.val_list_path, "r") as f:
             for line in f.readlines():
@@ -99,7 +99,7 @@ class VOC2012:
                 self.val_imgs.append(img)
                 self.val_lbls.append(lbl)
 
-                cls_list.extend([bndbox.label for bndbox in lbl])
+                cls_list.extend([bbox.label for bbox in lbl])
 
         self.cls_list = np.unique(cls_list)
         self.cls2idx = {cls: i for i, cls in enumerate(self.cls_list)}
@@ -136,12 +136,12 @@ class VOC2012:
 
             for obj in objects:
                 name = obj.find("name").text
-                bndbox = obj.find("bndbox")
+                bbox = obj.find("bbox")
 
-                x1 = int(bndbox.find("xmin").text)
-                x2 = int(bndbox.find("xmax").text)
-                y1 = int(bndbox.find("ymin").text)
-                y2 = int(bndbox.find("ymax").text)
+                x1 = int(bbox.find("xmin").text)
+                x2 = int(bbox.find("xmax").text)
+                y1 = int(bbox.find("ymin").text)
+                y2 = int(bbox.find("ymax").text)
 
                 lbl.append(BoundingBox(x1=x1, x2=x2, y1=y1, y2=y2, label=name))
 
