@@ -118,7 +118,8 @@ class VOC2012:
             )
 
     def preprocess_one_step(self, line):
-        img_path = os.path.join(self.imgs_path, "{}.jpg".format(line.strip()))
+        line = line.strip()
+        img_path = os.path.join(self.imgs_path, "{}.jpg".format(line))
 
         lbl = []
 
