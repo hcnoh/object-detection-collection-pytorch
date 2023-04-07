@@ -107,7 +107,10 @@ class YOLOv1(Module):
 
         # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
         bbox_img_id_to_x_img_id_mapper = (
-            (bbox_img_id_batch.unsqueeze(-1) == x_img_id_batch.unsqueeze(0))
+            (
+                bbox_img_id_batch.unsqueeze(-1) ==
+                x_img_id_batch.unsqueeze(0)
+            ).long()
             .argmax(-1)
         )
 
