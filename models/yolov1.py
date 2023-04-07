@@ -277,14 +277,10 @@ class YOLOv1(Module):
         # cls_tgt_batch: [M, C]
         # cls_score_batch: [M, S, S, B, C]
         # bbox_img_id_batch: [M]
-        iou_batch = iou_batch.detach()
-        cls_tgt_batch = cls_tgt_batch.detach()
-        cls_score_batch = cls_spec_conf_score_pred_batch.detach()
-        bbox_img_id_batch = bbox_img_id_batch.detach()
-        # iou_batch = iou_batch.detach().cpu().numpy()
-        # cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
-        # cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
-        # bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
+        iou_batch = iou_batch.detach().cpu().numpy()
+        cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
+        cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
+        bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
 
         return (
             loss,
@@ -304,10 +300,10 @@ class YOLOv1(Module):
         train=True,
     ):
         loss_mean = []
-        iou_batch = []
-        cls_tgt_batch = []
-        cls_score_batch = []
-        bbox_img_id_batch = []
+        # iou_batch = []
+        # cls_tgt_batch = []
+        # cls_score_batch = []
+        # bbox_img_id_batch = []
 
         dataset_size = len(data_loader.dataset)
         progress_size = 0
@@ -403,10 +399,10 @@ class YOLOv1(Module):
                 opt.step()
 
             loss_mean.append(loss_one_step.detach().cpu().numpy())
-            iou_batch.append(iou_batch_one_step)
-            cls_tgt_batch.append(cls_tgt_batch_one_step)
-            cls_score_batch.append(cls_score_batch_one_step)
-            bbox_img_id_batch.append(bbox_img_id_batch_one_step)
+            # iou_batch.append(iou_batch_one_step)
+            # cls_tgt_batch.append(cls_tgt_batch_one_step)
+            # cls_score_batch.append(cls_score_batch_one_step)
+            # bbox_img_id_batch.append(bbox_img_id_batch_one_step)
 
         loss_mean = np.mean(loss_mean)
 
@@ -414,21 +410,18 @@ class YOLOv1(Module):
         # cls_tgt_batch: [M, C]
         # cls_score_batch: [M, S, S, B, C]
         # bbox_img_id_batch: [M]
-        iou_batch = torch.cat(iou_batch, 0)
-        cls_tgt_batch = torch.cat(cls_tgt_batch, 0)
-        cls_score_batch = torch.cat(cls_score_batch, 0)
-        bbox_img_id_batch = torch.cat(bbox_img_id_batch, 0)
         # iou_batch = np.vstack(iou_batch)
         # cls_tgt_batch = np.vstack(cls_tgt_batch)
         # cls_score_batch = np.vstack(cls_score_batch)
         # bbox_img_id_batch = np.hstack(bbox_img_id_batch)
 
-        aps = get_aps(
-            iou_batch,
-            cls_tgt_batch,
-            cls_score_batch,
-            bbox_img_id_batch,
-        )
+        # aps = get_aps(
+        #     iou_batch,
+        #     cls_tgt_batch,
+        #     cls_score_batch,
+        #     bbox_img_id_batch,
+        # )
+        aps = None
 
         return loss_mean, aps
 
@@ -484,27 +477,27 @@ class YOLOv1(Module):
                         "Epoch: {} --> " +
                         "Training: (" +
                         "Loss Mean: {},  " +
-                        "AP50: {},  " +
-                        "AP75: {},  " +
-                        "mAP: {}" +
+                        # "AP50: {},  " +
+                        # "AP75: {},  " +
+                        # "mAP: {}" +
                         ")    " +
                         "Validation: (" +
                         "Loss: {},  " +
-                        "AP50: {},  " +
-                        "AP75: {},  " +
-                        "mAP: {}" +
+                        # "AP50: {},  " +
+                        # "AP75: {},  " +
+                        # "mAP: {}" +
                         ")"
                     )
                     .format(
                         epoch,
                         train_loss_mean,
-                        train_aps[.50],
-                        train_aps[.75],
-                        train_aps["mAP"],
+                        # train_aps[.50],
+                        # train_aps[.75],
+                        # train_aps["mAP"],
                         val_loss,
-                        val_aps[.50],
-                        val_aps[.75],
-                        val_aps["mAP"],
+                        # val_aps[.50],
+                        # val_aps[.75],
+                        # val_aps["mAP"],
                     )
                 )
 

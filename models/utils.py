@@ -1,9 +1,6 @@
 import numpy as np
 import torch
 
-# from sklearn.metrics import average_precision_score
-from config import DEVICE
-
 
 def get_iou(
     x1_arr,
@@ -104,7 +101,7 @@ def get_aps(
 
         for cls_idx in range(C):
             # selected_cls_indices: [M]
-            selected_cls_indices = torch.where(cls_tgt_batch[:, cls_idx] == 1)[0]
+            selected_cls_indices = np.where(cls_tgt_batch[:, cls_idx] == 1)[0]
 
             # selected_iou_batch: [M, S, S, B]
             # selected_cls_tgt_batch: [M]
@@ -125,9 +122,9 @@ def get_aps(
             tp_list = []
             score_list = []
 
-            for img_id in torch.unique(selected_img_id_batch):
+            for img_id in np.unique(selected_img_id_batch):
                 # one_img_indices: [L]
-                one_img_indices = torch.where(selected_img_id_batch == img_id)
+                one_img_indices = np.where(selected_img_id_batch == img_id)
 
                 # one_img_iou_batch: [L, S, S, B]
                 # one_img_cls_score_batch: [L, S, S, B] -> [S, S, B]
@@ -140,7 +137,9 @@ def get_aps(
                 one_img_cls_score_batch = one_img_cls_score_batch[0]
 
                 # one_img_max_iou_by_grid_cell_batch: [S, S, B]
-                one_img_max_iou_by_grid_cell_batch = one_img_iou_batch.max(0)
+                one_img_max_iou_by_grid_cell_batch = np.max(
+                    one_img_iou_batch, axis=0
+                )
 
                 # fp, tp: [S, S, B]
                 fp = (one_img_max_iou_by_grid_cell_batch < level)
@@ -151,32 +150,27 @@ def get_aps(
                 score_list.append(one_img_cls_score_batch.flatten())
 
             # fp_list, tp_list, score_list: [M]
-            fp_list = torch.cat(fp_list, 0)
-            tp_list = torch.cat(tp_list, 0)
-            score_list = torch.cat(score_list, 0)
+            fp_list = np.hstack(fp_list)
+            tp_list = np.hstack(tp_list)
+            score_list = np.hstack(score_list)
 
-            sorted_indices = torch.argsort(score_list)
+            sorted_indices = np.argsort(score_list)
 
             sorted_fp_list = fp_list[sorted_indices]
             sorted_tp_list = tp_list[sorted_indices]
             # sorted_score_list = score_list[sorted_indices]
 
-            cum_fp_list = torch.cumsum(sorted_fp_list)
-            cum_tp_list = torch.cumsum(sorted_tp_list)
+            cum_fp_list = np.cumsum(sorted_fp_list)
+            cum_tp_list = np.cumsum(sorted_tp_list)
 
             prec_list = cum_tp_list / (cum_tp_list + cum_fp_list)
             rec_list = cum_tp_list / num_gt
 
-            reverse_cummax_prec_list = torch.cummax(prec_list[::-1])[::-1]
+            reverse_cummax_prec_list = cummax(prec_list[::-1])[::-1]
 
-            rec_diff_list = rec_list - torch.cat(
-                [torch.tensor([0]).to(DEVICE), rec_list[:-1]], 0
-            )
+            rec_diff_list = rec_list - np.hstack([[0], rec_list[:-1]])
 
-            ap = (
-                (reverse_cummax_prec_list * rec_diff_list).sum()
-                .detach().cpu().numpy()
-            )
+            ap = np.sum(reverse_cummax_prec_list * rec_diff_list)
 
             aps_by_class.append(ap)
 
@@ -185,90 +179,5 @@ def get_aps(
 
     mean_ap = np.mean([aps[level] for level in level_list])
     aps["mAP"] = mean_ap
-
-    # for level in level_list:
-
-    #     aps_by_class = []
-
-    #     for cls_idx in range(C):
-    #         # selected_cls_indices: [M]
-    #         selected_cls_indices = np.where(cls_tgt_batch[:, cls_idx] == 1)[0]
-
-    #         # selected_iou_batch: [M, S, S, B]
-    #         # selected_cls_tgt_batch: [M]
-    #         # selected_cls_score_batch: [M, S, S, B]
-    #         # selected_img_id_batch: [M]
-    #         selected_iou_batch = iou_batch[selected_cls_indices]
-    #         # selected_cls_tgt_batch = cls_tgt_batch[
-    #         #     selected_cls_indices, cls_idx
-    #         # ]
-    #         selected_cls_score_batch = cls_score_batch[
-    #             selected_cls_indices, :, :, :, cls_idx
-    #         ]
-    #         selected_img_id_batch = bbox_img_id_batch[selected_cls_indices]
-
-    #         num_gt = selected_iou_batch.shape[0]
-
-    #         fp_list = []
-    #         tp_list = []
-    #         score_list = []
-
-    #         for img_id in np.unique(selected_img_id_batch):
-    #             # one_img_indices: [L]
-    #             one_img_indices = np.where(selected_img_id_batch == img_id)
-
-    #             # one_img_iou_batch: [L, S, S, B]
-    #             # one_img_cls_score_batch: [L, S, S, B] -> [S, S, B]
-    #             one_img_iou_batch = selected_iou_batch[
-    #                 one_img_indices
-    #             ]
-    #             one_img_cls_score_batch = selected_cls_score_batch[
-    #                 one_img_indices
-    #             ]
-    #             one_img_cls_score_batch = one_img_cls_score_batch[0]
-
-    #             # one_img_max_iou_by_grid_cell_batch: [S, S, B]
-    #             one_img_max_iou_by_grid_cell_batch = np.max(
-    #                 one_img_iou_batch, axis=0
-    #             )
-
-    #             # fp, tp: [S, S, B]
-    #             fp = (one_img_max_iou_by_grid_cell_batch < level)
-    #             tp = (one_img_max_iou_by_grid_cell_batch >= level)
-
-    #             fp_list.append(fp.flatten())
-    #             tp_list.append(tp.flatten())
-    #             score_list.append(one_img_cls_score_batch.flatten())
-
-    #         # fp_list, tp_list, score_list: [M]
-    #         fp_list = np.hstack(fp_list)
-    #         tp_list = np.hstack(tp_list)
-    #         score_list = np.hstack(score_list)
-
-    #         sorted_indices = np.argsort(score_list)
-
-    #         sorted_fp_list = fp_list[sorted_indices]
-    #         sorted_tp_list = tp_list[sorted_indices]
-    #         # sorted_score_list = score_list[sorted_indices]
-
-    #         cum_fp_list = np.cumsum(sorted_fp_list)
-    #         cum_tp_list = np.cumsum(sorted_tp_list)
-
-    #         prec_list = cum_tp_list / (cum_tp_list + cum_fp_list)
-    #         rec_list = cum_tp_list / num_gt
-
-    #         reverse_cummax_prec_list = cummax(prec_list[::-1])[::-1]
-
-    #         rec_diff_list = rec_list - np.hstack([[0], rec_list[:-1]])
-
-    #         ap = np.sum(reverse_cummax_prec_list * rec_diff_list)
-
-    #         aps_by_class.append(ap)
-
-    #     aps["APs by Class"] = aps_by_class
-    #     aps[level] = np.mean(aps_by_class)
-
-    # mean_ap = np.mean([aps[level] for level in level_list])
-    # aps["mAP"] = mean_ap
 
     return aps
