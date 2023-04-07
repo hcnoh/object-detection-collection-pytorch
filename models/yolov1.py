@@ -305,8 +305,6 @@ class YOLOv1(Module):
         cls_score_batch = []
         bbox_img_id_batch = []
 
-        N = data_loader.batch_size
-
         dataset_size = len(data_loader.dataset)
         progress_size = 0
 
@@ -330,6 +328,8 @@ class YOLOv1(Module):
                 x_img_id_batch_one_step,
                 bbox_img_id_batch_one_step,
             ) = batch
+
+            N = x_batch_one_step.shape[0]
 
             progress_size += N
 
