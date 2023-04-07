@@ -243,7 +243,7 @@ class YOLOv1(Module):
         loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
 
         # loss_conf: [M, S, S, B] -> [M]
-        loss_conf = (iou_batch - conf_score_pred_batch) ** 2
+        loss_conf = (1 - conf_score_pred_batch) ** 2
         loss_conf = (loss_conf * obj_mask_batch).sum(-1).sum(-1).sum(-1)
 
         # loss_noobj: [M, S, S, B] -> [M]
@@ -262,7 +262,7 @@ class YOLOv1(Module):
             lambda_noobj * loss_noobj +
             loss_cls
         )
-        loss = loss.sum()
+        loss = loss.mean()
 
         # cls_tgt_batch: [M, S, S, C] -> [M, C]
         cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
