@@ -576,16 +576,16 @@ class YOLOv1(Module):
                     image=img, bounding_boxes=bbox_list
                 )
 
-                bbox_aug_list = (
-                    bbox_aug_list
-                    .remove_out_of_image().clip_out_of_image()
-                )
-
             else:
                 img_aug, bbox_aug_list = img, bbox_list
 
             img_aug, bbox_aug_list = resize(
                 image=img_aug, bounding_boxes=bbox_aug_list
+            )
+
+            bbox_aug_list = (
+                bbox_aug_list
+                .remove_out_of_image().clip_out_of_image()
             )
 
             x = torch.tensor(img_aug).to(DEVICE)
