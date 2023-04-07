@@ -499,7 +499,7 @@ class YOLOv1(Module):
     def collate_fn_with_imgaug(self, batch):
         return self.collate_fn(batch, augmentation=True)
 
-    def collate_fn(self, batch, augmentation=False, pad_val=-1):
+    def collate_fn(self, batch, augmentation=False):
         w_in = self.w_in
         h_in = self.h_in
 
