@@ -452,6 +452,7 @@ class YOLOv1(Module):
         val_aps_list = []
 
         max_map = 0
+        min_val_loss = 1e+10
 
         for lr, num_epochs in zip(learning_rate_list, num_epochs_list):
 
@@ -507,14 +508,16 @@ class YOLOv1(Module):
                 val_loss_list.append(val_loss)
                 val_aps_list.append(val_aps)
 
-                if val_aps["mAP"] > max_map:
+                # if val_aps["mAP"] > max_map:
+                if val_loss < min_val_loss:
                     torch.save(
                         self.state_dict(),
                         os.path.join(
                             ckpt_path, "best_model.ckpt"
                         )
                     )
-                    max_map = val_aps["mAP"]
+                    # max_map = val_aps["mAP"]
+                    min_val_loss = val_loss
 
             cum_epoch += num_epochs
 
