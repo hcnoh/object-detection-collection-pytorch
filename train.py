@@ -62,6 +62,8 @@ def main():
 
     model.train_model(**train_config)
 
+    model.evaluate_model(val_loader, ckpt_path)
+
 
 if __name__ == "__main__":
     main()

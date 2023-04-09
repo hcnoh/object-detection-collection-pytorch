@@ -12,23 +12,23 @@ def get_iou(
     y1_hat_arr,
     y2_hat_arr,
 ):
-    intersection_arr = (
-        torch.relu(
-            torch.minimum(x2_arr, x2_hat_arr) -
-            torch.maximum(x1_arr, x1_hat_arr),
-        ) *
-        torch.relu(
-            torch.minimum(y2_arr, y2_hat_arr) -
-            torch.maximum(y1_arr, y1_hat_arr),
-        )
-    )
-    union_arr = (
-        (x2_hat_arr - x1_hat_arr) * (y2_hat_arr - y1_hat_arr) +
-        (x2_arr - x1_arr) * (y2_arr - y1_arr) -
-        intersection_arr
+    intsec_x1_arr = torch.maximum(x1_arr, x1_hat_arr)
+    intsec_y1_arr = torch.maximum(y1_arr, y1_hat_arr)
+    intsec_x2_arr = torch.minimum(x2_arr, x2_hat_arr)
+    intsec_y2_arr = torch.minimum(y2_arr, y2_hat_arr)
+
+    intsec_arr = (
+        torch.clamp(intsec_x2_arr - intsec_x1_arr, min=0) *
+        torch.clamp(intsec_y2_arr - intsec_y1_arr, min=0)
     )
 
-    iou_arr = intersection_arr / union_arr
+    union_arr = (
+        (x2_arr - x1_arr) * (y2_arr - y1_arr) +
+        (x2_hat_arr - x1_hat_arr) * (y2_hat_arr - y1_hat_arr) -
+        intsec_arr
+    )
+
+    iou_arr = intsec_arr / (union_arr + 1e-6)
 
     return iou_arr
 
@@ -57,7 +57,7 @@ def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox):
         intersection_arr
     )
 
-    iou_arr = intersection_arr / union_arr
+    iou_arr = intersection_arr / (union_arr + 1e-6)
 
     return iou_arr
 
@@ -154,7 +154,7 @@ def get_aps(
             tp_list = np.hstack(tp_list)
             score_list = np.hstack(score_list)
 
-            sorted_indices = np.argsort(score_list)
+            sorted_indices = np.argsort(score_list)[::-1]
 
             sorted_fp_list = fp_list[sorted_indices]
             sorted_tp_list = tp_list[sorted_indices]
@@ -170,7 +170,17 @@ def get_aps(
 
             rec_diff_list = rec_list - np.hstack([[0], rec_list[:-1]])
 
+            # print("==============================================")
+            # print(cls_idx)
+            # print("sorted_score_list", sorted_score_list)
+            # print("prec_list", prec_list)
+            # print("rec_list", rec_list)
+            # print("reverse_cummax_prec_list", reverse_cummax_prec_list)
+            # print("rec_diff_list", rec_diff_list)
+
             ap = np.sum(reverse_cummax_prec_list * rec_diff_list)
+
+            # print("ap", ap)
 
             aps_by_class.append(ap)
 

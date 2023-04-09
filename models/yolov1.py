@@ -8,7 +8,7 @@ import torch.backends.mps
 import imgaug.augmenters as iaa
 
 from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
-from torch.optim import SGD
+from torch.optim import SGD, Adam
 
 from config import DEVICE
 from models.backbones.googlenet import GoogLeNetBackbone
@@ -49,10 +49,19 @@ class YOLOv1(Module):
         )
 
     def forward(self, x):
+        B = self.B
+        C = self.C
+
         h = self.backbone_model(x)
         h = self.linear_layers(h)
-        h = h.reshape([-1, self.S, self.S, self.B * 5 + self.C])
-        y = torch.sigmoid(h)
+        y = h.reshape([-1, self.S, self.S, self.B * 5 + self.C])
+
+        y[..., 0:B * 5:5] = y[..., 0:B * 5:5].clamp(0., 1.)
+        y[..., 1:B * 5:5] = y[..., 1:B * 5:5].clamp(0., 1.)
+        y[..., 2:B * 5:5] = y[..., 2:B * 5:5].clamp(0., 1.)
+        y[..., 3:B * 5:5] = y[..., 3:B * 5:5].clamp(0., 1.)
+        y[..., 4:B * 5:5] = torch.sigmoid(y[..., 4:B * 5:5])
+        y[..., -C:] = torch.sigmoid(y[..., -C:])
 
         return y
 
@@ -121,49 +130,24 @@ class YOLOv1(Module):
         # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
         # conf_score_pred_batch: [M, S, S, B]
         # cond_cls_prob_pred_batch: [M, S, S, C]
-        bx_norm_pred_batch = y_pred_batch[:, :, :, 0:B * 5:5]
-        by_norm_pred_batch = y_pred_batch[:, :, :, 1:B * 5:5]
-        bw_norm_pred_batch = y_pred_batch[:, :, :, 2:B * 5:5]
-        bh_norm_pred_batch = y_pred_batch[:, :, :, 3:B * 5:5]
-        conf_score_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
-        cond_cls_prob_pred_batch = y_pred_batch[:, :, :, -C:]
+        bx_norm_pred_batch = y_pred_batch[..., 0:B * 5:5]
+        by_norm_pred_batch = y_pred_batch[..., 1:B * 5:5]
+        bw_norm_pred_batch = y_pred_batch[..., 2:B * 5:5]
+        bh_norm_pred_batch = y_pred_batch[..., 3:B * 5:5]
+        conf_score_pred_batch = y_pred_batch[..., 4:B * 5:5]
+        cond_cls_prob_pred_batch = y_pred_batch[..., -C:]
 
         # bx_norm_tgt_batch, by_norm_tgt_batch,
         # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, 1]
-        bx_norm_tgt_batch = y_tgt_batch[:, :, :, 0].unsqueeze(-1)
-        by_norm_tgt_batch = y_tgt_batch[:, :, :, 1].unsqueeze(-1)
-        bw_norm_tgt_batch = y_tgt_batch[:, :, :, 2].unsqueeze(-1)
-        bh_norm_tgt_batch = y_tgt_batch[:, :, :, 3].unsqueeze(-1)
-
-        bx_norm_tgt_batch = torch.maximum(
-            torch.minimum(
-                bx_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
-            ),
-            torch.tensor(0.).to(DEVICE)
-        )
-        by_norm_tgt_batch = torch.maximum(
-            torch.minimum(
-                by_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
-            ),
-            torch.tensor(0.).to(DEVICE)
-        )
-        bw_norm_tgt_batch = torch.maximum(
-            torch.minimum(
-                bw_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
-            ),
-            torch.tensor(0.).to(DEVICE)
-        )
-        bh_norm_tgt_batch = torch.maximum(
-            torch.minimum(
-                bh_norm_tgt_batch, torch.tensor(1.).to(DEVICE)
-            ),
-            torch.tensor(0.).to(DEVICE)
-        )
+        bx_norm_tgt_batch = y_tgt_batch[..., 0].unsqueeze(-1).clamp(0., 1.)
+        by_norm_tgt_batch = y_tgt_batch[..., 1].unsqueeze(-1).clamp(0., 1.)
+        bw_norm_tgt_batch = y_tgt_batch[..., 2].unsqueeze(-1).clamp(0., 1.)
+        bh_norm_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1).clamp(0., 1.)
 
         # obj_mask_batch: [M, S, S, 1]
         # noobj_mask_batch: [M, S, S, 1]
         obj_mask_batch = obj_mask_batch.unsqueeze(-1)
-        noobj_mask_batch = (obj_mask_batch != 1)
+        # noobj_mask_batch = (obj_mask_batch != 1)
 
         # i_arr: [1, S, 1, 1]
         # j_arr: [1, 1, S, 1]
@@ -198,10 +182,10 @@ class YOLOv1(Module):
 
         # x1_tgt_batch, x2_tgt_batch,
         # y1_tgt_batch, y2_tgt_batch: [M, S, S, 1]
-        x1_tgt_batch = coord_batch[:, :, :, 0].unsqueeze(-1)
-        x2_tgt_batch = coord_batch[:, :, :, 1].unsqueeze(-1)
-        y1_tgt_batch = coord_batch[:, :, :, 2].unsqueeze(-1)
-        y2_tgt_batch = coord_batch[:, :, :, 3].unsqueeze(-1)
+        x1_tgt_batch = coord_batch[..., 0].unsqueeze(-1)
+        x2_tgt_batch = coord_batch[..., 1].unsqueeze(-1)
+        y1_tgt_batch = coord_batch[..., 2].unsqueeze(-1)
+        y2_tgt_batch = coord_batch[..., 3].unsqueeze(-1)
 
         # iou_batch: [M, S, S, B]
         iou_batch = get_iou(
@@ -224,6 +208,9 @@ class YOLOv1(Module):
         responsible_mask_batch = (iou_batch == max_iou_by_grid_cell_batch)
         responsible_mask_batch = (responsible_mask_batch * obj_mask_batch)
 
+        # not_responsible_mask_batch: [M, S, S, B]
+        not_responsible_mask_batch = (responsible_mask_batch != 1)
+
         # loss_xy: [M, S, S, B] -> [M]
         loss_xy = (
             (bx_norm_tgt_batch - bx_norm_pred_batch) ** 2 +
@@ -244,11 +231,17 @@ class YOLOv1(Module):
 
         # loss_conf: [M, S, S, B] -> [M]
         loss_conf = (1 - conf_score_pred_batch) ** 2
-        loss_conf = (loss_conf * obj_mask_batch).sum(-1).sum(-1).sum(-1)
+        loss_conf = (
+            (loss_conf * responsible_mask_batch)
+            .sum(-1).sum(-1).sum(-1)
+        )
 
         # loss_noobj: [M, S, S, B] -> [M]
         loss_noobj = (0 - conf_score_pred_batch) ** 2
-        loss_noobj = (loss_noobj * noobj_mask_batch).sum(-1).sum(-1).sum(-1)
+        loss_noobj = (
+            (loss_noobj * not_responsible_mask_batch)
+            .sum(-1).sum(-1).sum(-1)
+        )
 
         # loss_cls: [M, S, S, C] -> [M]
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
@@ -264,31 +257,7 @@ class YOLOv1(Module):
         )
         loss = loss.mean()
 
-        # cls_tgt_batch: [M, S, S, C] -> [M, C]
-        cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
-
-        # cls_spec_conf_score_pred_batch: [M, S, S, B, C]
-        cls_spec_conf_score_pred_batch = (
-            cond_cls_prob_pred_batch.unsqueeze(-2) *
-            conf_score_pred_batch.unsqueeze(-1)
-        )
-
-        # iou_batch: [M, S, S, B]
-        # cls_tgt_batch: [M, C]
-        # cls_score_batch: [M, S, S, B, C]
-        # bbox_img_id_batch: [M]
-        iou_batch = iou_batch.detach().cpu().numpy()
-        cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
-        cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
-        bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
-
-        return (
-            loss,
-            iou_batch,
-            cls_tgt_batch,
-            cls_score_batch,
-            bbox_img_id_batch,
-        )
+        return loss
 
     def execute_one_step(
         self,
@@ -355,17 +324,7 @@ class YOLOv1(Module):
             y_pred_batch_one_step = self(x_batch_one_step)
 
             # loss_one_step: []
-            # iou_batch_one_step: [M, S, S, B]
-            # cls_tgt_batch_one_step: [M, C]
-            # cls_score_batch_one_step: [M, S, S, B, C]
-            # bbox_img_id_batch_one_step: [M]
-            (
-                loss_one_step,
-                iou_batch_one_step,
-                cls_tgt_batch_one_step,
-                cls_score_batch_one_step,
-                bbox_img_id_batch_one_step,
-            ) = self.get_loss(
+            loss_one_step = self.get_loss(
                 y_pred_batch_one_step,
                 y_tgt_batch_one_step,
                 coord_batch_one_step,
@@ -393,6 +352,9 @@ class YOLOv1(Module):
                         momentum=0.9,
                         weight_decay=5e-4,
                     )
+
+                #########################################
+                # opt = Adam(self.parameters(), lr=lr)
 
                 opt.zero_grad()
                 loss_one_step.backward()
@@ -705,13 +667,16 @@ class YOLOv1(Module):
             cls_score_batch.append(cls_score_batch_one_step)
             bbox_img_id_batch.append(bbox_img_id_batch_one_step)
 
+            # if progress_size > 500:
+            #     break
+
         # iou_batch: [M, S, S, B]
         # cls_tgt_batch: [M, C]
         # cls_score_batch: [M, S, S, B, C]
         # bbox_img_id_batch: [M]
         iou_batch = np.vstack(iou_batch)
         cls_tgt_batch = np.vstack(cls_tgt_batch)
-        cls_score_batch = np.vstack(cls_tgt_batch)
+        cls_score_batch = np.vstack(cls_score_batch)
         bbox_img_id_batch = np.hstack(bbox_img_id_batch)
 
         aps = get_aps(
@@ -721,7 +686,6 @@ class YOLOv1(Module):
             bbox_img_id_batch,
         )
 
-        aps = self.evaluate_one_step(data_loader)
         print("Evaluation Results:")
         print(aps)
 
