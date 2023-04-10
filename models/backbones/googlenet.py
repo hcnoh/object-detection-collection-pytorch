@@ -6,8 +6,8 @@ from config import DEVICE
 
 
 class GoogLeNetBackbone(Module):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
         self.backbone_model = torch.hub.load(
             'pytorch/vision:v0.10.0', 'googlenet', pretrained=True

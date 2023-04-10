@@ -9,18 +9,17 @@ import imgaug.augmenters as iaa
 
 from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
 from torch.nn.functional import one_hot
-from torch.optim import SGD, Adam
+from torch.optim import SGD
 
 from config import DEVICE
 from models.backbones.googlenet import GoogLeNetBackbone
 from models.utils import get_iou, get_aps
 
 
-class YOLOv1(Module):
+class YOLOv2(Module):
     def __init__(
         self,
         S,
-        B,
         cls_list,
         cls2idx,
     ) -> None:
@@ -31,8 +30,16 @@ class YOLOv1(Module):
         self.h_in = self.backbone_model.h_in
         self.w_in = self.backbone_model.w_in
 
+        self.anchor_boxes = [
+            (1.3221, 1.73145),
+            (3.19275, 4.00944),
+            (5.05587, 8.09892),
+            (9.47112, 4.84053),
+            (11.2364, 10.0071),
+        ]
+        self.num_anchor_boxes = len(self.anchor_boxes)
+
         self.S = S
-        self.B = B
 
         self.cls_list = cls_list
         self.cls2idx = cls2idx
@@ -46,26 +53,21 @@ class YOLOv1(Module):
             Linear(self.backbone_output_dim, 4096),
             ReLU(),
             Dropout(.5),
-            Linear(4096, self.S * self.S * (self.B * 5 + self.C))
+            Linear(
+                4096,
+                self.S * self.S * (self.num_anchor_boxes * (5 + self.C))
+            )
         )
 
     def forward(self, x):
         S = self.S
-        B = self.B
         C = self.C
 
         h = self.backbone_model(x)
         h = self.head_model(h)
-        y = h.reshape([-1, S, S, B * 5 + C])
+        y = h.reshape([-1, S, S, self.num_anchor_boxes * (5 + C)])
 
         y = torch.sigmoid(y)
-
-        # y[..., 0:B * 5:5] = y[..., 0:B * 5:5].clamp(0., 1.)
-        # y[..., 1:B * 5:5] = y[..., 1:B * 5:5].clamp(0., 1.)
-        # y[..., 2:B * 5:5] = y[..., 2:B * 5:5].clamp(0., 1.)
-        # y[..., 3:B * 5:5] = y[..., 3:B * 5:5].clamp(0., 1.)
-        # y[..., 4:B * 5:5] = torch.sigmoid(y[..., 4:B * 5:5])
-        # y[..., -C:] = torch.sigmoid(y[..., -C:])
 
         return y
 

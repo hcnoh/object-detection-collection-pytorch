@@ -7,7 +7,10 @@ MODEL_CONFIG = {
     "YOLOv1": {
         "S": 7,
         "B": 2,
-    }
+    },
+    "YOLOv2": {
+        "S": 13,
+    },
 }
 
 TRAIN_CONFIG = {
@@ -19,8 +22,8 @@ TRAIN_CONFIG = {
                 1e-4,
             ],
             "num_epochs_list": [
-                150,
-                150,
+                500,
+                300,
                 300,
             ],
             "lambda_coord": 5,
