@@ -8,6 +8,7 @@ import torch.backends.mps
 import imgaug.augmenters as iaa
 
 from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
+from torch.nn.functional import one_hot
 from torch.optim import SGD, Adam
 
 from config import DEVICE
@@ -201,13 +202,11 @@ class YOLOv1(Module):
             y2_pred_batch,
         ).detach()
 
-        # max_iou_by_grid_cell_batch: [M, S, S, 1]
-        max_iou_by_grid_cell_batch = (
-            torch.max(iou_batch, dim=-1, keepdim=True).values
+        # responsible_mask_batch: [M, S, S] -> [M, S, S, B]
+        _, responsible_mask_batch = (
+            torch.max(iou_batch, dim=-1)
         )
-
-        # responsible_mask_batch: [M, S, S, B]
-        responsible_mask_batch = (iou_batch == max_iou_by_grid_cell_batch)
+        responsible_mask_batch = one_hot(responsible_mask_batch, B)
         responsible_mask_batch = (responsible_mask_batch * obj_mask_batch)
 
         # not_responsible_mask_batch: [M, S, S, B]
@@ -342,18 +341,18 @@ class YOLOv1(Module):
 
             if train:
                 if epoch == 1:
-                    opt = Adam(
+                    opt = SGD(
                         self.parameters(),
                         lr=lr / (10 ** (1 - (progress_size / dataset_size))),
-                        # momentum=0.9,
+                        momentum=0.9,
                         weight_decay=5e-4,
                     )
 
                 else:
-                    opt = Adam(
+                    opt = SGD(
                         self.parameters(),
                         lr=lr,
-                        # momentum=0.9,
+                        momentum=0.9,
                         weight_decay=5e-4,
                     )
 
