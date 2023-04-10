@@ -56,12 +56,14 @@ class YOLOv1(Module):
         h = self.linear_layers(h)
         y = h.reshape([-1, self.S, self.S, self.B * 5 + self.C])
 
+        y = torch.sigmoid(y)
+
         # y[..., 0:B * 5:5] = y[..., 0:B * 5:5].clamp(0., 1.)
         # y[..., 1:B * 5:5] = y[..., 1:B * 5:5].clamp(0., 1.)
         # y[..., 2:B * 5:5] = y[..., 2:B * 5:5].clamp(0., 1.)
         # y[..., 3:B * 5:5] = y[..., 3:B * 5:5].clamp(0., 1.)
-        y[..., 4:B * 5:5] = torch.sigmoid(y[..., 4:B * 5:5])
-        y[..., -C:] = torch.sigmoid(y[..., -C:])
+        # y[..., 4:B * 5:5] = torch.sigmoid(y[..., 4:B * 5:5])
+        # y[..., -C:] = torch.sigmoid(y[..., -C:])
 
         return y
 
@@ -219,20 +221,14 @@ class YOLOv1(Module):
         loss_xy = (loss_xy * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
 
         # loss_wh: [M, S, S, B] -> [M]
-        # loss_wh = (
-        #     (
-        #         torch.sqrt(bw_norm_tgt_batch) - torch.sqrt(bw_norm_pred_batch)
-        #     ) ** 2 +
-        #     (
-        #         torch.sqrt(bh_norm_tgt_batch) - torch.sqrt(bh_norm_pred_batch)
-        #     ) ** 2
-        # )
         loss_wh = (
             (
-                torch.sqrt(bw_norm_tgt_batch) - bw_norm_pred_batch
+                torch.sqrt(bw_norm_tgt_batch) -
+                torch.sqrt(bw_norm_pred_batch)
             ) ** 2 +
             (
-                torch.sqrt(bh_norm_tgt_batch) - bh_norm_pred_batch
+                torch.sqrt(bh_norm_tgt_batch) -
+                torch.sqrt(bh_norm_pred_batch)
             ) ** 2
         )
         loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
@@ -346,18 +342,18 @@ class YOLOv1(Module):
 
             if train:
                 if epoch == 1:
-                    opt = SGD(
+                    opt = Adam(
                         self.parameters(),
                         lr=lr / (10 ** (1 - (progress_size / dataset_size))),
-                        momentum=0.9,
+                        # momentum=0.9,
                         weight_decay=5e-4,
                     )
 
                 else:
-                    opt = SGD(
+                    opt = Adam(
                         self.parameters(),
                         lr=lr,
-                        momentum=0.9,
+                        # momentum=0.9,
                         weight_decay=5e-4,
                     )
 
