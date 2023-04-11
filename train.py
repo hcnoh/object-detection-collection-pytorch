@@ -2,6 +2,7 @@ import os
 import datetime
 import json
 import warnings
+import copy
 
 import torch
 import torch.cuda
@@ -43,7 +44,10 @@ def main():
 
     train_config = TRAIN_CONFIG[model_name]["VOC2012"]
     with open(os.path.join(ckpt_path, "train_config.json"), "w") as f:
-        json.dump(train_config, f, indent=4)
+        train_config_to_restore = copy.deepcopy(train_config)
+        train_config_to_restore["batch_size"] = BATCH_SIZE
+
+        json.dump(train_config_to_restore, f, indent=4)
 
     if DEVICE == "cuda" and not torch.cuda.is_available():
         print("error")

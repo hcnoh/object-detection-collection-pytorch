@@ -1,7 +1,7 @@
 # You can choose device config from: cpu, cuda, mps
 DEVICE = "cpu"
 
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 
 MODEL_CONFIG = {
     "YOLOv1": {
