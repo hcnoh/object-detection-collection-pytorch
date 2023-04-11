@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from config import DEVICE, BATCH_SIZE, MODEL_CONFIG, TRAIN_CONFIG
 from data_loaders.voc2012 import VOC2012
 from models.yolov1 import YOLOv1
+from models.yolov2 import YOLOv2
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -51,7 +52,10 @@ def main():
 
     print(DEVICE)
 
-    model = YOLOv1(**model_config).to(DEVICE)
+    if model_name == "YOLOv1":
+        model = YOLOv1(**model_config).to(DEVICE)
+    elif model_name == "YOLOv2":
+        model = YOLOv2(**model_config).to(DEVICE)
 
     train_loader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True,
