@@ -35,10 +35,10 @@ class YOLOv2(Module):
         self.B = len(self.anchor_box_sizes)
 
         self.pw_list = (
-            torch.tensor(b[0] for b in self.anchor_box_sizes).to(DEVICE)
+            torch.tensor([b[0] for b in self.anchor_box_sizes]).to(DEVICE)
         )
         self.ph_list = (
-            torch.tensor(b[1] for b in self.anchor_box_sizes).to(DEVICE)
+            torch.tensor([b[1] for b in self.anchor_box_sizes]).to(DEVICE)
         )
 
         self.S = S
