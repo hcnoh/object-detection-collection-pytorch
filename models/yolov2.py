@@ -7,12 +7,12 @@ import torch.cuda
 import torch.backends.mps
 import imgaug.augmenters as iaa
 
-from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
+from torch.nn import Module
 from torch.nn.functional import one_hot
 from torch.optim import SGD
 
 from config import DEVICE
-from models.backbones.googlenet import GoogLeNetBackbone
+from models.backbones.darknet19 import Darknet19Backbone
 from models.utils import get_iou, get_aps
 
 
@@ -25,19 +25,21 @@ class YOLOv2(Module):
     ) -> None:
         super().__init__()
 
-        self.backbone_model = GoogLeNetBackbone()
-
-        self.h_in = self.backbone_model.h_in
-        self.w_in = self.backbone_model.w_in
-
-        self.anchor_boxes = [
+        self.anchor_box_sizes = [
             (1.3221, 1.73145),
             (3.19275, 4.00944),
             (5.05587, 8.09892),
             (9.47112, 4.84053),
             (11.2364, 10.0071),
         ]
-        self.num_anchor_boxes = len(self.anchor_boxes)
+        self.B = len(self.anchor_box_sizes)
+
+        self.pw_list = (
+            torch.tensor(b[0] for b in self.anchor_box_sizes).to(DEVICE)
+        )
+        self.ph_list = (
+            torch.tensor(b[1] for b in self.anchor_box_sizes).to(DEVICE)
+        )
 
         self.S = S
 
@@ -46,28 +48,58 @@ class YOLOv2(Module):
 
         self.C = len(self.cls_list)
 
-        self.backbone_output_dim = np.prod(self.backbone_model.output_shape)
+        self.backbone_output_dim = self.B * (5 + self.C)
 
-        self.head_model = Sequential(
-            Flatten(),
-            Linear(self.backbone_output_dim, 4096),
-            ReLU(),
-            Dropout(.5),
-            Linear(
-                4096,
-                self.S * self.S * (self.num_anchor_boxes * (5 + self.C))
-            )
-        )
+        self.backbone_model = Darknet19Backbone(self.backbone_output_dim)
+
+        self.h_in = self.backbone_model.h_in
+        self.w_in = self.backbone_model.w_in
 
     def forward(self, x):
-        S = self.S
+        '''
+            Args:
+                x:
+                    - the input image whose type is FloatTensor
+                    - [N, H, W, C] = [N, 416, 416, 3]
+
+            Returns:
+                y:
+                    - [N, 13, 13, output_dim]
+        '''
+        B = self.B
         C = self.C
 
-        h = self.backbone_model(x)
-        h = self.head_model(h)
-        y = h.reshape([-1, S, S, self.num_anchor_boxes * (5 + C)])
+        # pw, ph: [1, 1, 1, B]
+        pw = self.pw_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+        ph = self.ph_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
 
-        y = torch.sigmoid(y)
+        # y: [N, S, S, B * (5 + C)]
+        y = self.backbone_model(x).permute(0, 2, 3, 1)
+
+        # tx, ty -> sigma(tx), sigma(ty)
+        for i in range(0, 2):
+            y[..., i:B * (5 + C):5 + C] = torch.sigmoid(
+                y[..., i:B * (5 + C):5 + C]
+            )
+
+        # tw, th -> pw * exp(tw), ph * exp(th)
+        y[..., 2:B * (5 + C):5 + C] = pw * torch.exp(
+            y[..., 2:B * (5 + C):5 + C]
+        )
+        y[..., 3:B * (5 + C):5 + C] = ph * torch.exp(
+            y[..., 3:B * (5 + C):5 + C]
+        )
+
+        # to -> sigma(to)
+        y[..., 4:B * (5 + C):5 + C] = torch.sigmoid(
+                y[..., 4:B * (5 + C):5 + C]
+            )
+
+        # cond_cls_prob
+        for i in range(5, C + 5):
+            y[..., i:B * (5 + C):5 + C] = torch.sigmoid(
+                y[..., i:B * (5 + C):5 + C]
+            )
 
         return y
 
@@ -110,15 +142,9 @@ class YOLOv2(Module):
                     - the image IDs for the given bounding boxes
                     - [M]
         '''
-        w_in = self.w_in
-        h_in = self.h_in
-
         S = self.S
         B = self.B
         C = self.C
-
-        grid_cell_w = w_in / S
-        grid_cell_h = h_in / S
 
         # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
         bbox_img_id_to_x_img_id_mapper = (
@@ -132,52 +158,51 @@ class YOLOv2(Module):
         # y_pred_batch: [N, S, S, B * 5 + C] -> [M, S, S, B * 5 + C]
         y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
 
-        # bx_norm_pred_batch, by_norm_pred_batch,
-        # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
+        # bx_norm_pred_batch, by_norm_pred_batch : [M, S, S, B]
+        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
         # conf_score_pred_batch: [M, S, S, B]
-        # cond_cls_prob_pred_batch: [M, S, S, C]
-        bx_norm_pred_batch = y_pred_batch[..., 0:B * 5:5]
-        by_norm_pred_batch = y_pred_batch[..., 1:B * 5:5]
-        bw_norm_pred_batch = y_pred_batch[..., 2:B * 5:5]
-        bh_norm_pred_batch = y_pred_batch[..., 3:B * 5:5]
-        conf_score_pred_batch = y_pred_batch[..., 4:B * 5:5]
-        cond_cls_prob_pred_batch = y_pred_batch[..., -C:]
+        # cond_cls_prob_pred_batch: [M, S, S, B, C]
+        bx_norm_pred_batch = y_pred_batch[..., 0:B * (5 + C):5 + C]
+        by_norm_pred_batch = y_pred_batch[..., 1:B * (5 + C):5 + C]
+        bw_pred_batch = y_pred_batch[..., 2:B * (5 + C):5 + C]
+        bh_pred_batch = y_pred_batch[..., 3:B * (5 + C):5 + C]
+        conf_score_pred_batch = y_pred_batch[..., 4:B * (5 + C):5 + C]
+        cond_cls_prob_pred_batch = torch.stack(
+            [y_pred_batch[..., i:B * (5 + C):5 + C] for i in range(C)],
+            dim=-1
+        )
 
-        # bx_norm_tgt_batch, by_norm_tgt_batch,
-        # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, 1]
+        # bx_norm_tgt_batch, by_norm_tgt_batch: [M, S, S, 1]
+        # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
         bx_norm_tgt_batch = y_tgt_batch[..., 0].unsqueeze(-1).clamp(0., 1.)
         by_norm_tgt_batch = y_tgt_batch[..., 1].unsqueeze(-1).clamp(0., 1.)
-        bw_norm_tgt_batch = y_tgt_batch[..., 2].unsqueeze(-1).clamp(0., 1.)
-        bh_norm_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1).clamp(0., 1.)
+        bw_tgt_batch = y_tgt_batch[..., 2].unsqueeze(-1).clamp(0., 1.)
+        bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1).clamp(0., 1.)
+
+        # cls_tgt_batch: [M, S, S, 1, C]
+        cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
 
         # obj_mask_batch: [M, S, S, 1]
-        # noobj_mask_batch: [M, S, S, 1]
         obj_mask_batch = obj_mask_batch.unsqueeze(-1)
-        # noobj_mask_batch = (obj_mask_batch != 1)
 
-        # i_arr: [1, S, 1, 1]
-        # j_arr: [1, 1, S, 1]
-        i_arr = (
+        # cy_batch: [1, S, 1, 1]
+        # cx_batch: [1, 1, S, 1]
+        cy_batch = (
             torch.arange(S).to(DEVICE)
             .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
         )
-        j_arr = (
+        cx_batch = (
             torch.arange(S).to(DEVICE)
             .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
         )
 
-        # bx_pred_batch, by_pred_batch,
-        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
+        # bx_pred_batch, by_pred_batch: [M, S, S, B]
         bx_pred_batch = (
-            bx_norm_pred_batch * grid_cell_w +
-            j_arr * grid_cell_w
+            cx_batch + bx_norm_pred_batch
         )
         by_pred_batch = (
-            by_norm_pred_batch * grid_cell_h +
-            i_arr * grid_cell_h
+            cy_batch + by_norm_pred_batch
         )
-        bw_pred_batch = bw_norm_pred_batch * w_in
-        bh_pred_batch = bh_norm_pred_batch * h_in
 
         # x1_pred_batch, x2_pred_batch,
         # y1_pred_batch, y2_pred_batch: [M, S, S, B]
@@ -224,14 +249,8 @@ class YOLOv2(Module):
 
         # loss_wh: [M, S, S, B] -> [M]
         loss_wh = (
-            (
-                torch.sqrt(bw_norm_tgt_batch) -
-                torch.sqrt(bw_norm_pred_batch)
-            ) ** 2 +
-            (
-                torch.sqrt(bh_norm_tgt_batch) -
-                torch.sqrt(bh_norm_pred_batch)
-            ) ** 2
+            (torch.sqrt(bw_tgt_batch) - torch.sqrt(bw_pred_batch)) ** 2 +
+            (torch.sqrt(bh_tgt_batch) - torch.sqrt(bh_pred_batch)) ** 2
         )
         loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
 
@@ -249,9 +268,12 @@ class YOLOv2(Module):
             .sum(-1).sum(-1).sum(-1)
         )
 
-        # loss_cls: [M, S, S, C] -> [M]
+        # loss_cls: [M, S, S, B, C] -> [M]
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
-        loss_cls = (loss_cls * obj_mask_batch).sum(-1).sum(-1).sum(-1)
+        loss_cls = (
+            (loss_cls * responsible_mask_batch)
+            .sum(-1).sum(-1).sum(-1).sum(-1)
+        )
 
         # loss: [M] -> []
         loss = (
@@ -358,9 +380,6 @@ class YOLOv2(Module):
                         momentum=0.9,
                         weight_decay=5e-4,
                     )
-
-                #########################################
-                # opt = Adam(self.parameters(), lr=lr)
 
                 opt.zero_grad()
                 loss_one_step.backward()
@@ -497,15 +516,9 @@ class YOLOv2(Module):
                     - the image IDs for the given bounding boxes
                     - [M]
         '''
-        w_in = self.w_in
-        h_in = self.h_in
-
         S = self.S
         B = self.B
         C = self.C
-
-        grid_cell_w = w_in / S
-        grid_cell_h = h_in / S
 
         # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
         bbox_img_id_to_x_img_id_mapper = (
@@ -519,40 +532,38 @@ class YOLOv2(Module):
         # y_pred_batch: [N, S, S, B * 5 + C] -> [M, S, S, B * 5 + C]
         y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
 
-        # bx_norm_pred_batch, by_norm_pred_batch,
-        # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
+        # bx_norm_pred_batch, by_norm_pred_batch : [M, S, S, B]
+        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
         # conf_score_pred_batch: [M, S, S, B]
-        # cond_cls_prob_pred_batch: [M, S, S, C]
-        bx_norm_pred_batch = y_pred_batch[:, :, :, 0:B * 5:5]
-        by_norm_pred_batch = y_pred_batch[:, :, :, 1:B * 5:5]
-        bw_norm_pred_batch = y_pred_batch[:, :, :, 2:B * 5:5]
-        bh_norm_pred_batch = y_pred_batch[:, :, :, 3:B * 5:5]
-        conf_score_pred_batch = y_pred_batch[:, :, :, 4:B * 5:5]
-        cond_cls_prob_pred_batch = y_pred_batch[:, :, :, -C:]
+        # cond_cls_prob_pred_batch: [M, S, S, B, C]
+        bx_norm_pred_batch = y_pred_batch[..., 0:B * (5 + C):5 + C]
+        by_norm_pred_batch = y_pred_batch[..., 1:B * (5 + C):5 + C]
+        bw_pred_batch = y_pred_batch[..., 2:B * (5 + C):5 + C]
+        bh_pred_batch = y_pred_batch[..., 3:B * (5 + C):5 + C]
+        conf_score_pred_batch = y_pred_batch[..., 4:B * (5 + C):5 + C]
+        cond_cls_prob_pred_batch = torch.stack(
+            [y_pred_batch[..., i:B * (5 + C):5 + C] for i in range(C)],
+            dim=-1
+        )
 
-        # i_arr: [1, S, 1, 1]
-        # j_arr: [1, 1, S, 1]
-        i_arr = (
+        # cy_batch: [1, S, 1, 1]
+        # cx_batch: [1, 1, S, 1]
+        cy_batch = (
             torch.arange(S).to(DEVICE)
             .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
         )
-        j_arr = (
+        cx_batch = (
             torch.arange(S).to(DEVICE)
             .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
         )
 
-        # bx_pred_batch, by_pred_batch,
-        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
+        # bx_pred_batch, by_pred_batch: [M, S, S, B]
         bx_pred_batch = (
-            bx_norm_pred_batch * grid_cell_w +
-            j_arr * grid_cell_w
+            cx_batch + bx_norm_pred_batch
         )
         by_pred_batch = (
-            by_norm_pred_batch * grid_cell_h +
-            i_arr * grid_cell_h
+            cy_batch + by_norm_pred_batch
         )
-        bw_pred_batch = bw_norm_pred_batch * w_in
-        bh_pred_batch = bh_norm_pred_batch * h_in
 
         # x1_pred_batch, x2_pred_batch,
         # y1_pred_batch, y2_pred_batch: [M, S, S, B]
@@ -585,7 +596,7 @@ class YOLOv2(Module):
 
         # cls_spec_conf_score_pred_batch: [M, S, S, B, C]
         cls_spec_conf_score_pred_batch = (
-            cond_cls_prob_pred_batch.unsqueeze(-2) *
+            cond_cls_prob_pred_batch *
             conf_score_pred_batch.unsqueeze(-1)
         )
 
@@ -761,40 +772,38 @@ class YOLOv2(Module):
                 cls_tgt = np.zeros(shape=[S, S, C])
                 obj_mask = np.zeros(shape=[S, S])
 
-                x1 = bbox.x1
-                x2 = bbox.x2
-                y1 = bbox.y1
-                y2 = bbox.y2
+                x1 = bbox.x1 / grid_cell_w
+                x2 = bbox.x2 / grid_cell_w
+                y1 = bbox.y1 / grid_cell_h
+                y2 = bbox.y2 / grid_cell_h
 
                 bx = (x1 + x2) / 2
                 by = (y1 + y2) / 2
                 bw = x2 - x1
                 bh = y2 - y1
 
-                j = int(bx // grid_cell_w)
-                i = int(by // grid_cell_h)
+                cx = int(bx)
+                cy = int(by)
 
-                bx_norm = (bx % grid_cell_w) / grid_cell_w
-                by_norm = (by % grid_cell_h) / grid_cell_h
-                bw_norm = bw / w_in
-                bh_norm = bh / h_in
+                bx_norm = bx - cx
+                by_norm = by - cy
 
-                y_tgt[i, j, 0] = bx_norm
-                y_tgt[i, j, 1] = by_norm
-                y_tgt[i, j, 2] = bw_norm
-                y_tgt[i, j, 3] = bh_norm
+                y_tgt[cy, cx, 0] = bx_norm
+                y_tgt[cy, cx, 1] = by_norm
+                y_tgt[cy, cx, 2] = bw
+                y_tgt[cy, cx, 3] = bh
 
-                coord[i, j, 0] = x1
-                coord[i, j, 1] = x2
-                coord[i, j, 2] = y1
-                coord[i, j, 3] = y2
+                coord[cy, cx, 0] = x1
+                coord[cy, cx, 1] = x2
+                coord[cy, cx, 2] = y1
+                coord[cy, cx, 3] = y2
 
                 cls = bbox.label
                 cls_idx = self.cls2idx[cls]
 
-                cls_tgt[i, j, cls_idx] = 1
+                cls_tgt[cy, cx, cls_idx] = 1
 
-                obj_mask[i, j] = 1
+                obj_mask[cy, cx] = 1
 
                 y_tgt = torch.tensor(y_tgt).to(DEVICE)
                 coord = torch.tensor(coord).to(DEVICE)
