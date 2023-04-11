@@ -271,7 +271,7 @@ class YOLOv2(Module):
         # loss_cls: [M, S, S, B, C] -> [M]
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
         loss_cls = (
-            (loss_cls * responsible_mask_batch)
+            (loss_cls * responsible_mask_batch.unsqueeze(-1))
             .sum(-1).sum(-1).sum(-1).sum(-1)
         )
 

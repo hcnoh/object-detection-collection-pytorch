@@ -197,8 +197,8 @@ class Darknet19Backbone(Module):
 
         self.net8 = Sequential(
             Conv2d(
-                in_channels=1024,
-                out_channels=3072,
+                in_channels=3072,
+                out_channels=1024,
                 kernel_size=[3, 3],
                 padding="same",
             ),
