@@ -278,7 +278,7 @@ class Darknet19Backbone(Module):
                 torch.tensor([0.485, 0.456, 0.406]).float().to(DEVICE)
             ) /
             torch.tensor([0.229, 0.224, 0.225]).float().to(DEVICE)
-        )        
+        )
 
         # x: [N, C, H, W]
         x = x.permute(0, 3, 1, 2)
