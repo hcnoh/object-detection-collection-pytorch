@@ -66,7 +66,6 @@ class YOLOv2(Module):
                 y:
                     - [N, 13, 13, output_dim]
         '''
-        B = self.B
         C = self.C
 
         # pw, ph: [1, 1, 1, B]
@@ -77,29 +76,19 @@ class YOLOv2(Module):
         y = self.backbone_model(x).permute(0, 2, 3, 1)
 
         # tx, ty -> sigma(tx), sigma(ty)
-        for i in range(0, 2):
-            y[..., i:B * (5 + C):5 + C] = torch.sigmoid(
-                y[..., i:B * (5 + C):5 + C]
-            )
+        y[..., 0::5 + C] = torch.sigmoid(y[..., 0::5 + C])
+        y[..., 1::5 + C] = torch.sigmoid(y[..., 1::5 + C])
 
         # tw, th -> pw * exp(tw), ph * exp(th)
-        y[..., 2:B * (5 + C):5 + C] = pw * torch.exp(
-            y[..., 2:B * (5 + C):5 + C]
-        )
-        y[..., 3:B * (5 + C):5 + C] = ph * torch.exp(
-            y[..., 3:B * (5 + C):5 + C]
-        )
+        y[..., 2::5 + C] = pw * torch.exp(y[..., 2::5 + C])
+        y[..., 3::5 + C] = ph * torch.exp(y[..., 3::5 + C])
 
         # to -> sigma(to)
-        y[..., 4:B * (5 + C):5 + C] = torch.sigmoid(
-                y[..., 4:B * (5 + C):5 + C]
-            )
+        y[..., 4::5 + C] = torch.sigmoid(y[..., 4::5 + C])
 
         # cond_cls_prob
         for i in range(5, C + 5):
-            y[..., i:B * (5 + C):5 + C] = torch.sigmoid(
-                y[..., i:B * (5 + C):5 + C]
-            )
+            y[..., i::5 + C] = torch.sigmoid(y[..., i::5 + C])
 
         return y
 
@@ -155,20 +144,20 @@ class YOLOv2(Module):
             .argmax(-1)
         )
 
-        # y_pred_batch: [N, S, S, B * 5 + C] -> [M, S, S, B * 5 + C]
+        # y_pred_batch: [N, S, S, B * (5 + C)] -> [M, S, S, B * (5 + C)]
         y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
 
         # bx_norm_pred_batch, by_norm_pred_batch : [M, S, S, B]
         # bw_pred_batch, bh_pred_batch: [M, S, S, B]
         # conf_score_pred_batch: [M, S, S, B]
         # cond_cls_prob_pred_batch: [M, S, S, B, C]
-        bx_norm_pred_batch = y_pred_batch[..., 0:B * (5 + C):5 + C]
-        by_norm_pred_batch = y_pred_batch[..., 1:B * (5 + C):5 + C]
-        bw_pred_batch = y_pred_batch[..., 2:B * (5 + C):5 + C]
-        bh_pred_batch = y_pred_batch[..., 3:B * (5 + C):5 + C]
-        conf_score_pred_batch = y_pred_batch[..., 4:B * (5 + C):5 + C]
+        bx_norm_pred_batch = y_pred_batch[..., 0::5 + C]
+        by_norm_pred_batch = y_pred_batch[..., 1::5 + C]
+        bw_pred_batch = y_pred_batch[..., 2::5 + C]
+        bh_pred_batch = y_pred_batch[..., 3::5 + C]
+        conf_score_pred_batch = y_pred_batch[..., 4::5 + C]
         cond_cls_prob_pred_batch = torch.stack(
-            [y_pred_batch[..., i:B * (5 + C):5 + C] for i in range(C)],
+            [y_pred_batch[..., i::5 + C] for i in range(5, 5 + C)],
             dim=-1
         )
 
@@ -517,7 +506,6 @@ class YOLOv2(Module):
                     - [M]
         '''
         S = self.S
-        B = self.B
         C = self.C
 
         # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
@@ -529,20 +517,20 @@ class YOLOv2(Module):
             .argmax(-1)
         )
 
-        # y_pred_batch: [N, S, S, B * 5 + C] -> [M, S, S, B * 5 + C]
+        # y_pred_batch: [N, S, S, B * (5 + C)] -> [M, S, S, B * (5 + C)]
         y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
 
         # bx_norm_pred_batch, by_norm_pred_batch : [M, S, S, B]
         # bw_pred_batch, bh_pred_batch: [M, S, S, B]
         # conf_score_pred_batch: [M, S, S, B]
         # cond_cls_prob_pred_batch: [M, S, S, B, C]
-        bx_norm_pred_batch = y_pred_batch[..., 0:B * (5 + C):5 + C]
-        by_norm_pred_batch = y_pred_batch[..., 1:B * (5 + C):5 + C]
-        bw_pred_batch = y_pred_batch[..., 2:B * (5 + C):5 + C]
-        bh_pred_batch = y_pred_batch[..., 3:B * (5 + C):5 + C]
-        conf_score_pred_batch = y_pred_batch[..., 4:B * (5 + C):5 + C]
+        bx_norm_pred_batch = y_pred_batch[..., 0::5 + C]
+        by_norm_pred_batch = y_pred_batch[..., 1::5 + C]
+        bw_pred_batch = y_pred_batch[..., 2::5 + C]
+        bh_pred_batch = y_pred_batch[..., 3::5 + C]
+        conf_score_pred_batch = y_pred_batch[..., 4::5 + C]
         cond_cls_prob_pred_batch = torch.stack(
-            [y_pred_batch[..., i:B * (5 + C):5 + C] for i in range(C)],
+            [y_pred_batch[..., i::5 + C] for i in range(5, 5 + C)],
             dim=-1
         )
 
