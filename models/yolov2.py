@@ -165,8 +165,8 @@ class YOLOv2(Module):
         # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
         bx_norm_tgt_batch = y_tgt_batch[..., 0].unsqueeze(-1).clamp(0., 1.)
         by_norm_tgt_batch = y_tgt_batch[..., 1].unsqueeze(-1).clamp(0., 1.)
-        bw_tgt_batch = y_tgt_batch[..., 2].unsqueeze(-1).clamp(0., 1.)
-        bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1).clamp(0., 1.)
+        bw_tgt_batch = y_tgt_batch[..., 2].unsqueeze(-1)
+        bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1)
 
         # cls_tgt_batch: [M, S, S, 1, C]
         cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
