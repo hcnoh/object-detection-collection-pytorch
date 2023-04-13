@@ -1,6 +1,13 @@
 import torch
 
-from torch.nn import Module, Sequential, Conv2d, MaxPool2d, BatchNorm2d
+from torch.nn import (
+    Module,
+    Sequential,
+    Conv2d,
+    MaxPool2d,
+    BatchNorm2d,
+    LeakyReLU,
+)
 
 from config import DEVICE
 
@@ -22,6 +29,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(32),
+            LeakyReLU(0.1),
         )
 
         self.net2 = Sequential(
@@ -36,6 +44,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(64),
+            LeakyReLU(0.1),
         )
 
         self.net3 = Sequential(
@@ -50,6 +59,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(128),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=128,
                 out_channels=64,
@@ -57,6 +67,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(64),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=64,
                 out_channels=128,
@@ -64,6 +75,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(128),
+            LeakyReLU(0.1),
         )
 
         self.net4 = Sequential(
@@ -78,6 +90,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(256),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=256,
                 out_channels=128,
@@ -85,6 +98,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(128),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=128,
                 out_channels=256,
@@ -92,6 +106,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(256),
+            LeakyReLU(0.1),
         )
 
         self.net5 = Sequential(
@@ -106,6 +121,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(512),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=512,
                 out_channels=256,
@@ -113,6 +129,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(256),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=256,
                 out_channels=512,
@@ -120,6 +137,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(512),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=512,
                 out_channels=256,
@@ -127,6 +145,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(256),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=256,
                 out_channels=512,
@@ -134,6 +153,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(512),
+            LeakyReLU(0.1),
         )
 
         self.net6 = Sequential(
@@ -148,6 +168,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(1024),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=1024,
                 out_channels=512,
@@ -155,6 +176,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(512),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=512,
                 out_channels=1024,
@@ -162,6 +184,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(1024),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=1024,
                 out_channels=512,
@@ -169,6 +192,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(512),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=512,
                 out_channels=1024,
@@ -176,6 +200,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(1024),
+            LeakyReLU(0.1),
         )
 
         self.net7 = Sequential(
@@ -186,6 +211,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(1024),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=1024,
                 out_channels=1024,
@@ -193,6 +219,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(1024),
+            LeakyReLU(0.1),
         )
 
         self.net8 = Sequential(
@@ -203,6 +230,7 @@ class Darknet19Backbone(Module):
                 padding="same",
             ),
             BatchNorm2d(1024),
+            LeakyReLU(0.1),
             Conv2d(
                 in_channels=1024,
                 out_channels=self.output_dim,
