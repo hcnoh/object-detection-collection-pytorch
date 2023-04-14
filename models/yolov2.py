@@ -7,7 +7,7 @@ import torch.cuda
 import torch.backends.mps
 import imgaug.augmenters as iaa
 
-from torch.nn import Module
+from torch.nn import Module, Sequential, Conv2d, BatchNorm2d, LeakyReLU
 from torch.nn.functional import one_hot
 from torch.optim import SGD
 
@@ -49,13 +49,166 @@ class YOLOv2(Module):
         self.C = len(self.cls_list)
 
         self.backbone_output_dim = self.B * (5 + self.C)
+        self.head_output_dim = self.B * (5 + self.C)
 
         self.backbone_model = Darknet19Backbone(self.backbone_output_dim)
 
         self.h_in = self.backbone_model.h_in
         self.w_in = self.backbone_model.w_in
 
+        self.head_model = Sequential(
+            Conv2d(
+                in_channels=3072,
+                out_channels=1024,
+                kernel_size=[3, 3],
+                padding="same",
+            ),
+            BatchNorm2d(1024),
+            LeakyReLU(0.1),
+            Conv2d(
+                in_channels=1024,
+                out_channels=self.head_output_dim,
+                kernel_size=[1, 1],
+                padding="same",
+            ),
+            BatchNorm2d(self.head_output_dim),
+        )
+
+    def backbone(self, x):
+        '''
+            Args:
+                x:
+                    - the input image whose type is FloatTensor
+                    - [N, H, W, C] = [N, 416, 416, 3]
+
+            Returns:
+                h1:
+                    - [N, 512, 26, 26]
+                h2:
+                    - [N, 1024, 13, 13]
+        '''
+        # x: [N, C, H, W] = [N, 3, 416, 416]
+        x = self.backbone_model.normalize(x)
+
+        # h: [N, 32, 416, 416]
+        h = self.backbone_model.net1(x)
+
+        # h: [N, 64, 208, 208]
+        h = self.backbone_model.net2(h)
+
+        # h: [N, 128, 104, 104]
+        h = self.backbone_model.net3(h)
+
+        # h: [N, 256, 52, 52]
+        h = self.backbone_model.net4(h)
+
+        # h1: [N, 512, 26, 26]
+        h1 = self.backbone_model.net5(h)
+
+        # h2: [N, 1024, 13, 13]
+        h2 = self.backbone_model.net6(h1)
+
+        # h2: [N, 1024, 13, 13]
+        h2 = self.backbone_model.net7(h2)
+
+        return h1, h2
+
+    def neck(self, h1, h2):
+        '''
+            Args:
+                h1:
+                    - [N, 512, 26, 26]
+                h2:
+                    - [N, 1024, 13, 13]
+
+            Returns:
+                h:
+                    - [N, 3072, 13, 13]
+        '''
+        N, _, _, _ = h1.shape
+
+        # h1: [N, 26, 26, 512] -> [N, 26, 13, 1024] -> [N, 2048, 13, 13]
+        h1 = h1.permute(0, 2, 3, 1)
+        h1 = h1.reshape([N, 26, 13, 1024])
+        h1 = (
+            h1.permute(0, 2, 1, 3)
+            .reshape([N, 13, 13, 2048]).permute(0, 3, 2, 1)
+        )
+
+        # h: [N, 3072, 13, 13]
+        h = torch.cat([h1, h2], dim=1)
+
+        return h
+
+    def head(self, h):
+        '''
+            Args:
+                h:
+                    - [N, 3072, 13, 13]
+
+            Returns:
+                y:
+                    - [N, 13, 13, output_dim]
+        '''
+        B = self.B
+        C = self.C
+
+        # pw, ph: [1, 1, 1, B]
+        pw = self.pw_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+        ph = self.ph_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+
+        # y: [N, S, S, B * (5 + C)]
+        y = self.head_model(h).permute(0, 2, 3, 1)
+
+        # tx, ty -> sigmoid(tx), sigmoid(ty)
+        y[..., 0::5 + C] = torch.sigmoid(y[..., 0::5 + C])
+        y[..., 1::5 + C] = torch.sigmoid(y[..., 1::5 + C])
+
+        # tw, th -> pw * exp(tw), ph * exp(th)
+        y[..., 2::5 + C] = pw * torch.exp(y[..., 2::5 + C])
+        y[..., 3::5 + C] = ph * torch.exp(y[..., 3::5 + C])
+
+        # to -> sigmoid(to)
+        y[..., 4::5 + C] = torch.sigmoid(y[..., 4::5 + C])
+
+        # cond_cls_prob
+        for i in range(B):
+            y[..., i * (C + 5) + 5:i * (C + 5) + 5 + C] = (
+                torch.softmax(
+                    y[..., i * (C + 5) + 5:i * (C + 5) + 5 + C],
+                    dim=-1
+                )
+            )
+
+        # for i in range(5, C + 5):
+        #     y[..., i::5 + C] = torch.sigmoid(y[..., i::5 + C])
+
+        return y
+
     def forward(self, x):
+        '''
+            Args:
+                x:
+                    - the input image whose type is FloatTensor
+                    - [N, H, W, C] = [N, 416, 416, 3]
+
+            Returns:
+                y:
+                    - [N, 13, 13, output_dim]
+        '''
+        # h1: [N, 512, 26, 26]
+        # h2: [N, 1024, 13, 13]
+        h1, h2 = self.backbone(x)
+
+        # h: [N, 3072, 13, 13]
+        h = self.neck(h1, h2)
+
+        # y: [N, S, S, B * (5 + C)]
+        y = self.head(h)
+
+        return y
+
+    def forward_temp(self, x):
         '''
             Args:
                 x:
@@ -140,7 +293,7 @@ class YOLOv2(Module):
                     - the image IDs for the given bounding boxes
                     - [M]
         '''
-        epsilon = 1e-6
+        # epsilon = 1e-6
 
         S = self.S
         B = self.B
@@ -177,8 +330,8 @@ class YOLOv2(Module):
         )
 
         # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
-        bw_norm_pred_batch = torch.log(bw_pred_batch / pw + epsilon)
-        bh_norm_pred_batch = torch.log(bh_pred_batch / ph + epsilon)
+        bw_norm_pred_batch = (bw_pred_batch / pw)
+        bh_norm_pred_batch = (bh_pred_batch / ph)
 
         # bx_norm_tgt_batch, by_norm_tgt_batch: [M, S, S, 1]
         # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
@@ -188,8 +341,8 @@ class YOLOv2(Module):
         bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1)
 
         # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, B]
-        bw_norm_tgt_batch = torch.log(bw_tgt_batch / pw + epsilon)
-        bh_norm_tgt_batch = torch.log(bh_tgt_batch / ph + epsilon)
+        bw_norm_tgt_batch = bw_tgt_batch / pw
+        bh_norm_tgt_batch = bh_tgt_batch / ph
 
         # cls_tgt_batch: [M, S, S, 1, C]
         cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
