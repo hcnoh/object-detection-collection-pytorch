@@ -33,14 +33,14 @@ TRAIN_CONFIG = {
     "YOLOv2": {
         "VOC2012": {
             "learning_rate_list": [
-                1e-2,
                 1e-3,
                 1e-4,
+                1e-5,
             ],
             "num_epochs_list": [
-                500,
-                300,
-                300,
+                60,
+                30,
+                70,
             ],
             "lambda_coord": 5,
             "lambda_noobj": 5e-1,
