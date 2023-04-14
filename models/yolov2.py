@@ -175,8 +175,8 @@ class YOLOv2(Module):
         )
 
         # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
-        bw_norm_pred_batch = (bw_pred_batch / pw)
-        bh_norm_pred_batch = (bh_pred_batch / ph)
+        bw_norm_pred_batch = torch.log(bw_pred_batch / pw)
+        bh_norm_pred_batch = torch.log(bh_pred_batch / ph)
 
         # bx_norm_tgt_batch, by_norm_tgt_batch: [M, S, S, 1]
         # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
@@ -186,8 +186,8 @@ class YOLOv2(Module):
         bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1)
 
         # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, B]
-        bw_norm_tgt_batch = (bw_tgt_batch / pw)
-        bh_norm_tgt_batch = (bh_tgt_batch / ph)
+        bw_norm_tgt_batch = torch.log(bw_tgt_batch / pw)
+        bh_norm_tgt_batch = torch.log(bh_tgt_batch / ph)
 
         # cls_tgt_batch: [M, S, S, 1, C]
         cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
