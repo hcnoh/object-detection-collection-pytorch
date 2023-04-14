@@ -263,14 +263,8 @@ class YOLOv2(Module):
         #     (torch.sqrt(bh_tgt_batch) - torch.sqrt(bh_pred_batch)) ** 2
         # )
         loss_wh = (
-            (
-                torch.sqrt(bw_norm_tgt_batch) -
-                torch.sqrt(bw_norm_pred_batch)
-            ) ** 2 +
-            (
-                torch.sqrt(bh_norm_tgt_batch) -
-                torch.sqrt(bh_norm_pred_batch)
-            ) ** 2
+            (bw_norm_tgt_batch - bw_norm_pred_batch) ** 2 +
+            (bh_norm_tgt_batch - bh_norm_pred_batch) ** 2
         )
         loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
 
