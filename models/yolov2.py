@@ -207,52 +207,6 @@ class YOLOv2(Module):
 
         return y
 
-    def forward_temp(self, x):
-        '''
-            Args:
-                x:
-                    - the input image whose type is FloatTensor
-                    - [N, H, W, C] = [N, 416, 416, 3]
-
-            Returns:
-                y:
-                    - [N, 13, 13, output_dim]
-        '''
-        B = self.B
-        C = self.C
-
-        # pw, ph: [1, 1, 1, B]
-        pw = self.pw_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        ph = self.ph_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-
-        # y: [N, S, S, B * (5 + C)]
-        y = self.backbone_model(x).permute(0, 2, 3, 1)
-
-        # tx, ty -> sigmoid(tx), sigmoid(ty)
-        y[..., 0::5 + C] = torch.sigmoid(y[..., 0::5 + C])
-        y[..., 1::5 + C] = torch.sigmoid(y[..., 1::5 + C])
-
-        # tw, th -> pw * exp(tw), ph * exp(th)
-        y[..., 2::5 + C] = pw * torch.exp(y[..., 2::5 + C])
-        y[..., 3::5 + C] = ph * torch.exp(y[..., 3::5 + C])
-
-        # to -> sigmoid(to)
-        y[..., 4::5 + C] = torch.sigmoid(y[..., 4::5 + C])
-
-        # cond_cls_prob
-        for i in range(B):
-            y[..., i * (C + 5) + 5:i * (C + 5) + 5 + C] = (
-                torch.softmax(
-                    y[..., i * (C + 5) + 5:i * (C + 5) + 5 + C],
-                    dim=-1
-                )
-            )
-
-        # for i in range(5, C + 5):
-        #     y[..., i::5 + C] = torch.sigmoid(y[..., i::5 + C])
-
-        return y
-
     def get_loss(
         self,
         y_pred_batch,
@@ -292,7 +246,7 @@ class YOLOv2(Module):
                     - the image IDs for the given bounding boxes
                     - [M]
         '''
-        # epsilon = 1e-6
+        epsilon = 1e-6
 
         S = self.S
         B = self.B
@@ -329,8 +283,8 @@ class YOLOv2(Module):
         )
 
         # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
-        bw_norm_pred_batch = (bw_pred_batch / pw)
-        bh_norm_pred_batch = (bh_pred_batch / ph)
+        bw_norm_pred_batch = torch.log(bw_pred_batch / pw + epsilon)
+        bh_norm_pred_batch = torch.log(bh_pred_batch / ph + epsilon)
 
         # bx_norm_tgt_batch, by_norm_tgt_batch: [M, S, S, 1]
         # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
@@ -340,8 +294,8 @@ class YOLOv2(Module):
         bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1)
 
         # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, B]
-        bw_norm_tgt_batch = bw_tgt_batch / pw
-        bh_norm_tgt_batch = bh_tgt_batch / ph
+        bw_norm_tgt_batch = torch.log(bw_tgt_batch / pw + epsilon)
+        bh_norm_tgt_batch = torch.log(bh_tgt_batch / ph + epsilon)
 
         # cls_tgt_batch: [M, S, S, 1, C]
         cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
