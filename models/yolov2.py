@@ -140,6 +140,8 @@ class YOLOv2(Module):
                     - the image IDs for the given bounding boxes
                     - [M]
         '''
+        epsilon = 1e-6
+
         S = self.S
         B = self.B
         C = self.C
@@ -175,8 +177,8 @@ class YOLOv2(Module):
         )
 
         # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
-        bw_norm_pred_batch = torch.log(bw_pred_batch / pw)
-        bh_norm_pred_batch = torch.log(bh_pred_batch / ph)
+        bw_norm_pred_batch = torch.log(bw_pred_batch / pw + epsilon)
+        bh_norm_pred_batch = torch.log(bh_pred_batch / ph + epsilon)
 
         # bx_norm_tgt_batch, by_norm_tgt_batch: [M, S, S, 1]
         # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
@@ -186,8 +188,8 @@ class YOLOv2(Module):
         bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1)
 
         # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, B]
-        bw_norm_tgt_batch = torch.log(bw_tgt_batch / pw)
-        bh_norm_tgt_batch = torch.log(bh_tgt_batch / ph)
+        bw_norm_tgt_batch = torch.log(bw_tgt_batch / pw + epsilon)
+        bh_norm_tgt_batch = torch.log(bh_tgt_batch / ph + epsilon)
 
         # cls_tgt_batch: [M, S, S, 1, C]
         cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
@@ -241,23 +243,27 @@ class YOLOv2(Module):
         ).detach()
 
         # responsible_mask_batch: [M, S, S] -> [M, S, S, B]
+        # not_responsible_mask_batch: [M, S, S, B]
         _, responsible_mask_batch = (
             torch.max(iou_batch, dim=-1)
         )
         responsible_mask_batch = one_hot(responsible_mask_batch, B)
         responsible_mask_batch = (responsible_mask_batch * obj_mask_batch)
 
-        # not_responsible_mask_batch: [M, S, S, B]
         not_responsible_mask_batch = (responsible_mask_batch != 1)
 
-        # loss_xy: [M, S, S, B] -> [M]
+        responsible_mask_batch = responsible_mask_batch.bool()
+        not_responsible_mask_batch = not_responsible_mask_batch.bool()
+
+        # loss_xy: [M, S, S, B] -> []
         loss_xy = (
             (bx_norm_tgt_batch - bx_norm_pred_batch) ** 2 +
             (by_norm_tgt_batch - by_norm_pred_batch) ** 2
         )
-        loss_xy = (loss_xy * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
+        # loss_xy = (loss_xy * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
+        loss_xy = torch.masked_select(loss_xy, responsible_mask_batch).mean()
 
-        # loss_wh: [M, S, S, B] -> [M]
+        # loss_wh: [M, S, S, B] -> []
         # loss_wh = (
         #     (torch.sqrt(bw_tgt_batch) - torch.sqrt(bw_pred_batch)) ** 2 +
         #     (torch.sqrt(bh_tgt_batch) - torch.sqrt(bh_pred_batch)) ** 2
@@ -266,30 +272,41 @@ class YOLOv2(Module):
             (bw_norm_tgt_batch - bw_norm_pred_batch) ** 2 +
             (bh_norm_tgt_batch - bh_norm_pred_batch) ** 2
         )
-        loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
+        # loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
+        loss_wh = torch.masked_select(loss_wh, responsible_mask_batch).mean()
 
-        # loss_conf: [M, S, S, B] -> [M]
+        # loss_conf: [M, S, S, B] -> []
         loss_conf = (1 - conf_score_pred_batch) ** 2
+        # loss_conf = (
+        #     (loss_conf * responsible_mask_batch)
+        #     .sum(-1).sum(-1).sum(-1)
+        # )
         loss_conf = (
-            (loss_conf * responsible_mask_batch)
-            .sum(-1).sum(-1).sum(-1)
+            torch.masked_select(loss_conf, responsible_mask_batch).mean()
         )
 
-        # loss_noobj: [M, S, S, B] -> [M]
+        # loss_noobj: [M, S, S, B] -> []
         loss_noobj = (0 - conf_score_pred_batch) ** 2
+        # loss_noobj = (
+        #     (loss_noobj * not_responsible_mask_batch)
+        #     .sum(-1).sum(-1).sum(-1)
+        # )
         loss_noobj = (
-            (loss_noobj * not_responsible_mask_batch)
-            .sum(-1).sum(-1).sum(-1)
+            torch.masked_select(loss_noobj, not_responsible_mask_batch).mean()
         )
 
-        # loss_cls: [M, S, S, B, C] -> [M]
+        # loss_cls: [M, S, S, B, C] -> []
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
+        # loss_cls = (
+        #     (loss_cls * responsible_mask_batch.unsqueeze(-1))
+        #     .sum(-1).sum(-1).sum(-1).sum(-1)
+        # )
         loss_cls = (
-            (loss_cls * responsible_mask_batch.unsqueeze(-1))
-            .sum(-1).sum(-1).sum(-1).sum(-1)
+            torch.masked_select(loss_cls, responsible_mask_batch.unsqueeze(-1))
+            .mean()
         )
 
-        # loss: [M] -> []
+        # loss: []
         loss = (
             lambda_coord * loss_xy +
             lambda_coord * loss_wh +
@@ -297,7 +314,7 @@ class YOLOv2(Module):
             lambda_noobj * loss_noobj +
             loss_cls
         )
-        loss = loss.mean()
+        # loss = loss.mean()
 
         return loss
 
