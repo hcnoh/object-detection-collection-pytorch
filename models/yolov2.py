@@ -48,10 +48,9 @@ class YOLOv2(Module):
 
         self.C = len(self.cls_list)
 
-        self.backbone_output_dim = self.B * (5 + self.C)
         self.head_output_dim = self.B * (5 + self.C)
 
-        self.backbone_model = Darknet19Backbone(self.backbone_output_dim)
+        self.backbone_model = Darknet19Backbone()
 
         self.h_in = self.backbone_model.h_in
         self.w_in = self.backbone_model.w_in
