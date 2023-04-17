@@ -412,7 +412,7 @@ class YOLOv2(Module):
         #     (loss_cls * responsible_mask_batch.unsqueeze(-1))
         #     .sum(-1).sum(-1).sum(-1).sum(-1)
         # )
-        loss_cls = loss_cls.mean(-1)
+        loss_cls = loss_cls.sum(-1)
         loss_cls = torch.masked_select(loss_cls, responsible_mask_batch)
         loss_cls = loss_cls.mean()
 
