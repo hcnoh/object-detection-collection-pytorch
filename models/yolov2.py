@@ -364,15 +364,16 @@ class YOLOv2(Module):
         responsible_mask_batch = responsible_mask_batch.bool()
         not_responsible_mask_batch = not_responsible_mask_batch.bool()
 
-        # loss_xy: [M, S, S, B] -> []
+        # loss_xy: [M, S, S, B] -> [M] -> []
         loss_xy = (
             (bx_norm_tgt_batch - bx_norm_pred_batch) ** 2 +
             (by_norm_tgt_batch - by_norm_pred_batch) ** 2
         )
         # loss_xy = (loss_xy * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
-        loss_xy = torch.masked_select(loss_xy, responsible_mask_batch).mean()
+        loss_xy = torch.masked_select(loss_xy, responsible_mask_batch)
+        loss_xy = loss_xy.mean()
 
-        # loss_wh: [M, S, S, B] -> []
+        # loss_wh: [M, S, S, B] -> [M] -> []
         # loss_wh = (
         #     (torch.sqrt(bw_tgt_batch) - torch.sqrt(bw_pred_batch)) ** 2 +
         #     (torch.sqrt(bh_tgt_batch) - torch.sqrt(bh_pred_batch)) ** 2
@@ -382,38 +383,38 @@ class YOLOv2(Module):
             (bh_norm_tgt_batch - bh_norm_pred_batch) ** 2
         )
         # loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
-        loss_wh = torch.masked_select(loss_wh, responsible_mask_batch).mean()
+        loss_wh = torch.masked_select(loss_wh, responsible_mask_batch)
+        loss_wh = loss_wh.mean()
 
-        # loss_conf: [M, S, S, B] -> []
+        # loss_conf: [M, S, S, B] -> [M] -> []
         loss_conf = (1 - conf_score_pred_batch) ** 2
         # loss_conf = (
         #     (loss_conf * responsible_mask_batch)
         #     .sum(-1).sum(-1).sum(-1)
         # )
-        loss_conf = (
-            torch.masked_select(loss_conf, responsible_mask_batch).mean()
-        )
+        loss_conf = torch.masked_select(loss_conf, responsible_mask_batch)
+        loss_conf = loss_conf.mean()
 
-        # loss_noobj: [M, S, S, B] -> []
+        # loss_noobj: [M, S, S, B] -> [M * S * S * B - M] -> []
         loss_noobj = (0 - conf_score_pred_batch) ** 2
         # loss_noobj = (
         #     (loss_noobj * not_responsible_mask_batch)
         #     .sum(-1).sum(-1).sum(-1)
         # )
-        loss_noobj = (
-            torch.masked_select(loss_noobj, not_responsible_mask_batch).mean()
+        loss_noobj = torch.masked_select(
+            loss_noobj, not_responsible_mask_batch
         )
+        loss_noobj = loss_noobj.mean()
 
-        # loss_cls: [M, S, S, B, C] -> []
+        # loss_cls: [M, S, S, B, C] -> [M, S, S, B] -> [M] -> []
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
         # loss_cls = (
         #     (loss_cls * responsible_mask_batch.unsqueeze(-1))
         #     .sum(-1).sum(-1).sum(-1).sum(-1)
         # )
-        loss_cls = (
-            torch.masked_select(loss_cls, responsible_mask_batch.unsqueeze(-1))
-            .mean()
-        )
+        loss_cls = loss_cls.mean(-1)
+        loss_cls = torch.masked_select(loss_cls, responsible_mask_batch)
+        loss_cls = loss_cls.mean()
 
         # loss: []
         loss = (
