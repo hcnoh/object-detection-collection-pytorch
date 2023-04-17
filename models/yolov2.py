@@ -216,8 +216,11 @@ class YOLOv2(Module):
         obj_mask_batch,
         x_img_id_batch,
         bbox_img_id_batch,
-        lambda_coord,
+        lambda_xy,
+        lambda_wh,
+        lambda_conf,
         lambda_noobj,
+        lambda_cls,
     ):
         '''
             N: batch_size
@@ -414,11 +417,11 @@ class YOLOv2(Module):
 
         # loss: []
         loss = (
-            lambda_coord * loss_xy +
-            lambda_coord * loss_wh +
-            loss_conf +
+            lambda_xy * loss_xy +
+            lambda_wh * loss_wh +
+            lambda_conf * loss_conf +
             lambda_noobj * loss_noobj +
-            loss_cls
+            lambda_cls * loss_cls
         )
         # loss = loss.mean()
 
