@@ -431,8 +431,11 @@ class YOLOv2(Module):
         self,
         epoch,
         data_loader,
-        lambda_coord,
+        lambda_xy,
+        lambda_wh,
+        lambda_conf,
         lambda_noobj,
+        lambda_cls,
         lr=None,
         train=True,
     ):
@@ -500,8 +503,11 @@ class YOLOv2(Module):
                 obj_mask_batch_one_step,
                 x_img_id_batch_one_step,
                 bbox_img_id_batch_one_step,
-                lambda_coord,
+                lambda_xy,
+                lambda_wh,
+                lambda_conf,
                 lambda_noobj,
+                lambda_cls,
             )
 
             if train:
@@ -537,8 +543,11 @@ class YOLOv2(Module):
         val_loader,
         learning_rate_list,
         num_epochs_list,
-        lambda_coord,
+        lambda_xy,
+        lambda_wh,
+        lambda_conf,
         lambda_noobj,
+        lambda_cls,
         ckpt_path,
     ):
         '''
@@ -563,16 +572,22 @@ class YOLOv2(Module):
                 train_loss_mean = self.execute_one_step(
                     epoch,
                     train_loader,
-                    lambda_coord,
+                    lambda_xy,
+                    lambda_wh,
+                    lambda_conf,
                     lambda_noobj,
+                    lambda_cls,
                     lr,
                     train=True,
                 )
                 val_loss = self.execute_one_step(
                     epoch,
                     val_loader,
-                    lambda_coord,
+                    lambda_xy,
+                    lambda_wh,
+                    lambda_conf,
                     lambda_noobj,
+                    lambda_cls,
                     train=False,
                 )
 
