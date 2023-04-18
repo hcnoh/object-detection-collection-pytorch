@@ -249,7 +249,7 @@ class YOLOv2(Module):
                     - the image IDs for the given bounding boxes
                     - [M]
         '''
-        epsilon = 1e-6
+        eps = 1e-6
 
         S = self.S
         B = self.B
@@ -285,9 +285,12 @@ class YOLOv2(Module):
             dim=-1
         )
 
-        # bw_norm_pred_batch, bh_norm_pred_batch: [M, S, S, B]
-        bw_norm_pred_batch = torch.log(bw_pred_batch / pw + epsilon)
-        bh_norm_pred_batch = torch.log(bh_pred_batch / ph + epsilon)
+        # tx_pred_batch, ty_pred_batch,
+        # tw_pred_batch, th_pred_batch: [M, S, S, B]
+        tx_pred_batch = torch.logit(bx_norm_pred_batch, eps)
+        ty_pred_batch = torch.logit(by_norm_pred_batch, eps)
+        tw_pred_batch = torch.log(bw_pred_batch / pw + eps)
+        th_pred_batch = torch.log(bh_pred_batch / ph + eps)
 
         # bx_norm_tgt_batch, by_norm_tgt_batch: [M, S, S, 1]
         # bw_tgt_batch, bh_tgt_batch: [M, S, S, 1]
@@ -296,9 +299,12 @@ class YOLOv2(Module):
         bw_tgt_batch = y_tgt_batch[..., 2].unsqueeze(-1)
         bh_tgt_batch = y_tgt_batch[..., 3].unsqueeze(-1)
 
-        # bw_norm_tgt_batch, bh_norm_tgt_batch: [M, S, S, B]
-        bw_norm_tgt_batch = torch.log(bw_tgt_batch / pw + epsilon)
-        bh_norm_tgt_batch = torch.log(bh_tgt_batch / ph + epsilon)
+        # tx_tgt_batch, ty_tgt_batch,
+        # tw_tgt_batch, th_tgt_batch: [M, S, S, B]
+        tx_tgt_batch = torch.logit(bx_norm_tgt_batch, eps)
+        ty_tgt_batch = torch.logit(by_norm_tgt_batch, eps)
+        tw_tgt_batch = torch.log(bw_tgt_batch / pw + eps)
+        th_tgt_batch = torch.log(bh_tgt_batch / ph + eps)
 
         # cls_tgt_batch: [M, S, S, 1, C]
         cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
@@ -366,8 +372,8 @@ class YOLOv2(Module):
 
         # loss_xy: [M, S, S, B] -> [M] -> []
         loss_xy = (
-            (bx_norm_tgt_batch - bx_norm_pred_batch) ** 2 +
-            (by_norm_tgt_batch - by_norm_pred_batch) ** 2
+            (tx_tgt_batch - tx_pred_batch) ** 2 +
+            (ty_tgt_batch - ty_pred_batch) ** 2
         )
         # loss_xy = (loss_xy * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
         loss_xy = torch.masked_select(loss_xy, responsible_mask_batch)
@@ -379,8 +385,8 @@ class YOLOv2(Module):
         #     (torch.sqrt(bh_tgt_batch) - torch.sqrt(bh_pred_batch)) ** 2
         # )
         loss_wh = (
-            (bw_norm_tgt_batch - bw_norm_pred_batch) ** 2 +
-            (bh_norm_tgt_batch - bh_norm_pred_batch) ** 2
+            (tw_tgt_batch - tw_pred_batch) ** 2 +
+            (th_tgt_batch - th_pred_batch) ** 2
         )
         # loss_wh = (loss_wh * responsible_mask_batch).sum(-1).sum(-1).sum(-1)
         loss_wh = torch.masked_select(loss_wh, responsible_mask_batch)
