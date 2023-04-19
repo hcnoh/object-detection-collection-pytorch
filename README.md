@@ -4,3 +4,4 @@
 
 # References
 - [https://github.com/longcw/yolo2-pytorch](https://github.com/longcw/yolo2-pytorch)
+- [Image Augmentation](http://solarisailab.com/archives/2660)
