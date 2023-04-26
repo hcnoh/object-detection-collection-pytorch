@@ -11,7 +11,7 @@ import torch.backends.mps
 from torch.utils.data import DataLoader
 
 from config import DEVICE, BATCH_SIZE, MODEL_CONFIG, TRAIN_CONFIG
-from data_loaders.voc2012 import VOC2012
+from data_loaders.voc import VOC
 from models.yolov1 import YOLOv1
 from models.yolov2 import YOLOv2
 
@@ -33,7 +33,7 @@ def main():
     ckpt_path = os.path.join(ckpt_path, now.strftime("%Y-%m-%d %H-%M-%S"))
     os.makedirs(ckpt_path)
 
-    dataset = VOC2012()
+    dataset = VOC()
 
     train_dataset = dataset.train_dataset
     val_dataset = dataset.val_dataset
