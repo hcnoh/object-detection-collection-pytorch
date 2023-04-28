@@ -164,71 +164,146 @@ def get_augmenter(height, width):
 
 
 def get_iou(
-    x1_arr,
-    x2_arr,
-    y1_arr,
-    y2_arr,
-    x1_hat_arr,
-    x2_hat_arr,
-    y1_hat_arr,
-    y2_hat_arr,
+    x1_batch,
+    x2_batch,
+    y1_batch,
+    y2_batch,
+    x1_hat_batch,
+    x2_hat_batch,
+    y1_hat_batch,
+    y2_hat_batch,
 ):
-    intsec_x1_arr = torch.maximum(x1_arr, x1_hat_arr)
-    intsec_y1_arr = torch.maximum(y1_arr, y1_hat_arr)
-    intsec_x2_arr = torch.minimum(x2_arr, x2_hat_arr)
-    intsec_y2_arr = torch.minimum(y2_arr, y2_hat_arr)
+    '''
+        Returns the IOU batch from x1, x2, y1, y2, x1_hat, x2_hat, y1_hat,
+        y2_hat batches
 
-    intsec_arr = (
-        torch.clamp(intsec_x2_arr - intsec_x1_arr, min=0) *
-        torch.clamp(intsec_y2_arr - intsec_y1_arr, min=0)
+        Args:
+            x1_batch:
+                - [N, ...]
+            x2_batch:
+                - [N, ...]
+            y1_batch:
+                - [N, ...]
+            y2_batch:
+                - [N, ...]
+            x1_hat_batch:
+                - [N, ...]
+            x2_hat_batch:
+                - [N, ...]
+            y1_hat_batch:
+                - [N, ...]
+            y2_hat_batch:
+                - [N, ...]
+
+        Returns:
+            iou_batch:
+                - [N, ...]
+    '''
+    intsec_x1_batch = torch.maximum(x1_batch, x1_hat_batch)
+    intsec_y1_batch = torch.maximum(y1_batch, y1_hat_batch)
+    intsec_x2_batch = torch.minimum(x2_batch, x2_hat_batch)
+    intsec_y2_batch = torch.minimum(y2_batch, y2_hat_batch)
+
+    intsec_batch = (
+        torch.clamp(intsec_x2_batch - intsec_x1_batch, min=0) *
+        torch.clamp(intsec_y2_batch - intsec_y1_batch, min=0)
     )
 
-    union_arr = (
-        (x2_arr - x1_arr) * (y2_arr - y1_arr) +
-        (x2_hat_arr - x1_hat_arr) * (y2_hat_arr - y1_hat_arr) -
-        intsec_arr
+    union_batch = (
+        (x2_batch - x1_batch) * (y2_batch - y1_batch) +
+        (x2_hat_batch - x1_hat_batch) * (y2_hat_batch - y1_hat_batch) -
+        intsec_batch
     )
 
-    iou_arr = intsec_arr / (union_arr + 1e-6)
+    iou_batch = intsec_batch / (union_batch + 1e-6)
 
-    return iou_arr
+    return iou_batch
 
 
-def get_iou_backup(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox):
-    x1_hat_arr = x_hat_arr - (w_hat_arr / 2)
-    x2_hat_arr = x_hat_arr + (w_hat_arr / 2)
-    y1_hat_arr = y_hat_arr - (h_hat_arr / 2)
-    y2_hat_arr = y_hat_arr + (h_hat_arr / 2)
+def nms(
+    x1_batch,
+    x2_batch,
+    y1_batch,
+    y2_batch,
+    conf_score_batch,
+    conf_score_thre=0.6,
+    iou_thre=0.5
+):
+    '''
+        Args:
+            x1_batch:
+                - torch.Tensor
+                - [N, ...]
+            x2_batch:
+                - torch.Tensor
+                - [N, ...]
+            y1_batch:
+                - torch.Tensor
+                - [N, ...]
+            y2_batch:
+                - torch.Tensor
+                - [N, ...]
+            conf_score_batch:
+                - torch.Tensor
+                - [N, ...]
+    '''
 
-    intersection_arr = (
-        np.maximum(
-            np.minimum(bbox.x2, x2_hat_arr) -
-            np.maximum(bbox.x1, x1_hat_arr),
-            0
-        ) *
-        np.maximum(
-            np.minimum(bbox.y2, y2_hat_arr) -
-            np.maximum(bbox.y1, y1_hat_arr),
-            0
+    # conf_score_mask_batch: [N, ...]
+    conf_score_mask_batch = (conf_score_batch >= conf_score_thre).bool()
+
+    # x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch: [M]
+    x1_batch = torch.masked_select(x1_batch, conf_score_mask_batch)
+    x2_batch = torch.masked_select(x2_batch, conf_score_mask_batch)
+    y1_batch = torch.masked_select(y1_batch, conf_score_mask_batch)
+    y2_batch = torch.masked_select(y2_batch, conf_score_mask_batch)
+    conf_score_batch = torch.masked_select(
+        conf_score_batch, conf_score_mask_batch
+    )
+
+    # for sorting the coordinates.
+    conf_score_batch, sorted_indices = torch.sort(
+        conf_score_batch, descending=True
+    )
+
+    x1_batch = x1_batch[sorted_indices]
+    x2_batch = x2_batch[sorted_indices]
+    y1_batch = y1_batch[sorted_indices]
+    y2_batch = y2_batch[sorted_indices]
+
+    i = 0
+    while i < len(conf_score_batch) - 1:
+        # x1_tgt, x2_tgt, y1_tgt, y2_tgt: [1]
+        x1_tgt = x1_batch[i:i + 1]
+        x2_tgt = x2_batch[i:i + 1]
+        y1_tgt = y1_batch[i:i + 1]
+        y2_tgt = y2_batch[i:i + 1]
+
+        # iou_batch: [M - i]
+        iou_batch = get_iou(
+            x1_tgt,
+            x2_tgt,
+            y1_tgt,
+            y2_tgt,
+            x1_batch[i + 1:],
+            x2_batch[i + 1:],
+            y1_batch[i + 1:],
+            y2_batch[i + 1:],
         )
-    )
-    union_arr = (
-        (x2_hat_arr - x1_hat_arr) * (y2_hat_arr - y1_hat_arr) +
-        (bbox.x2 - bbox.x1) * (bbox.y2 - bbox.y1) -
-        intersection_arr
-    )
 
-    iou_arr = intersection_arr / (union_arr + 1e-6)
+        # iou_mask: [M - i]
+        iou_mask = (iou_batch >= iou_thre).bool()
 
-    return iou_arr
+        # iou_mask: [M]
+        iou_mask = torch.cat([torch.tensor([True] * i), iou_mask], dim=-1)
 
+        # x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch: [M']
+        x1_batch = torch.masked_select(x1_batch, iou_mask)
+        x2_batch = torch.masked_select(x2_batch, iou_mask)
+        y1_batch = torch.masked_select(y1_batch, iou_mask)
+        y2_batch = torch.masked_select(y2_batch, iou_mask)
+        conf_score_batch = torch.masked_select(conf_score_batch, iou_mask)
 
-def get_max_iou_indices(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox):
-    iou_arr = get_iou(x_hat_arr, y_hat_arr, w_hat_arr, h_hat_arr, bbox)
-
-    max_iou = np.max(iou_arr)
-
-    return iou_arr, max_iou, np.argmax(iou_arr) * 5 + np.array([0, 1, 2, 3, 4])
+    return x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch
 
 
 def cummax(x):
