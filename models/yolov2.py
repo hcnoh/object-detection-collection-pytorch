@@ -12,7 +12,7 @@ from torch.optim import SGD
 
 from config import DEVICE
 from models.backbones.darknet19 import Darknet19Backbone
-from models.utils import get_iou, get_aps, get_augmenter
+from models.utils import get_iou, get_aps, get_augmenter, nms
 
 
 class YOLOv2(Module):
@@ -206,6 +206,122 @@ class YOLOv2(Module):
 
         return y
 
+    def predict(
+        self,
+        x_batch,
+        conf_score_thre=0.6,
+        iou_thre=0.5,
+    ):
+        '''
+            Args:
+                x_batch:
+                    - the input image batch whose type is FloatTensor
+                    - [N, H, W, C] = [N, 416, 416, 3]
+        '''
+        self.eval()
+
+        # y_pred_batch: [N, S, S, B * (5 + C)]
+        y_pred_batch = self(x_batch)
+
+        w_in = self.w_in
+        h_in = self.h_in
+
+        S = self.S
+        # B = self.B
+        C = self.C
+
+        # bx_norm_pred_batch, by_norm_pred_batch : [N, S, S, B]
+        # bw_pred_batch, bh_pred_batch: [N, S, S, B]
+        # conf_score_pred_batch: [N, S, S, B]
+        # cond_cls_prob_pred_batch: [N, S, S, B, C]
+        bx_norm_pred_batch = y_pred_batch[..., 0::5 + C]
+        by_norm_pred_batch = y_pred_batch[..., 1::5 + C]
+        bw_pred_batch = y_pred_batch[..., 2::5 + C]
+        bh_pred_batch = y_pred_batch[..., 3::5 + C]
+        conf_score_pred_batch = y_pred_batch[..., 4::5 + C]
+        cond_cls_prob_pred_batch = torch.stack(
+            [y_pred_batch[..., i::5 + C] for i in range(5, 5 + C)],
+            dim=-1
+        )
+
+        # cy_batch: [1, S, 1, 1]
+        # cx_batch: [1, 1, S, 1]
+        cy_batch = (
+            torch.arange(S).to(DEVICE)
+            .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        )
+        cx_batch = (
+            torch.arange(S).to(DEVICE)
+            .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        )
+
+        # bx_pred_batch, by_pred_batch: [N, S, S, B]
+        bx_pred_batch = (
+            cx_batch + bx_norm_pred_batch
+        )
+        by_pred_batch = (
+            cy_batch + by_norm_pred_batch
+        )
+
+        # x1_pred_batch, x2_pred_batch,
+        # y1_pred_batch, y2_pred_batch: [N, S, S, B]
+        x1_pred_batch = bx_pred_batch - (bw_pred_batch / 2)
+        x2_pred_batch = bx_pred_batch + (bw_pred_batch / 2)
+        y1_pred_batch = by_pred_batch - (bh_pred_batch / 2)
+        y2_pred_batch = by_pred_batch + (bh_pred_batch / 2)
+
+        grid_cell_w = w_in / S
+        grid_cell_h = h_in / S
+
+        # cls_spec_conf_score_pred_batch: [N, S, S, B, C]
+        cls_spec_conf_score_pred_batch = (
+            cond_cls_prob_pred_batch *
+            conf_score_pred_batch.unsqueeze(-1)
+        )
+
+        # x1_pred_batch, x2_pred_batch,
+        # y1_pred_batch, y2_pred_batch: [M, S, S, B]
+        (
+            x1_pred_batch,
+            x2_pred_batch,
+            y1_pred_batch,
+            y2_pred_batch,
+            conf_score_pred_batch,
+            cls_spec_conf_score_pred_batch,
+        ) = nms(
+            x1_pred_batch,
+            x2_pred_batch,
+            y1_pred_batch,
+            y2_pred_batch,
+            conf_score_pred_batch,
+            cls_spec_conf_score_pred_batch,
+            conf_score_thre,
+            iou_thre,
+        )
+
+        x1_pred_batch = x1_pred_batch * grid_cell_w
+        x2_pred_batch = x2_pred_batch * grid_cell_w
+        y1_pred_batch = y1_pred_batch * grid_cell_h
+        y2_pred_batch = y2_pred_batch * grid_cell_h
+
+        x1_pred_batch = x1_pred_batch.detach().cpu().numpy()
+        x2_pred_batch = x2_pred_batch.detach().cpu().numpy()
+        y1_pred_batch = y1_pred_batch.detach().cpu().numpy()
+        y2_pred_batch = y2_pred_batch.detach().cpu().numpy()
+        conf_score_pred_batch = conf_score_pred_batch.detach().cpu().numpy()
+        cls_spec_conf_score_pred_batch = (
+            cls_spec_conf_score_pred_batch.detach().cpu().numpy()
+        )
+
+        return (
+            x1_pred_batch,
+            x2_pred_batch,
+            y1_pred_batch,
+            y2_pred_batch,
+            conf_score_pred_batch,
+            cls_spec_conf_score_pred_batch,
+        )
+
     def get_loss(
         self,
         y_pred_batch,
@@ -228,7 +344,7 @@ class YOLOv2(Module):
             Args:
                 y_pred_batch:
                     - the model's prediction on the given targets
-                    - [N, S, S, B * 5 + C]
+                    - [N, S, S, B * (5 + C)]
                 y_tgt_batch:
                     - the given targets
                     - [M, S, S, 4]
@@ -497,7 +613,7 @@ class YOLOv2(Module):
 
                 self.eval()
 
-            # y_pred_batch_one_step: [N, S, S, B * 5 + C]
+            # y_pred_batch_one_step: [N, S, S, B * (5 + C)]
             y_pred_batch_one_step = self(x_batch_one_step)
 
             # loss_one_step: []
@@ -663,7 +779,7 @@ class YOLOv2(Module):
             Args:
                 y_pred_batch:
                     - the model's prediction on the given targets
-                    - [N, S, S, B * 5 + C]
+                    - [N, S, S, B * (5 + C)]
                 coord_batch:
                     - the given coordinates for the all bounding boxes
                     - [M, S, S, 4]
@@ -819,7 +935,7 @@ class YOLOv2(Module):
 
             self.eval()
 
-            # y_pred_batch_one_step: [N, S, S, B * 5 + C]
+            # y_pred_batch_one_step: [N, S, S, B * (5 + C)]
             y_pred_batch_one_step = self(x_batch_one_step)
 
             # iou_batch_one_step: [M, S, S, B]

@@ -226,8 +226,9 @@ def nms(
     y1_batch,
     y2_batch,
     conf_score_batch,
+    cls_spec_conf_score_batch,
     conf_score_thre=0.6,
-    iou_thre=0.5
+    iou_thre=0.5,
 ):
     '''
         Args:
@@ -247,6 +248,7 @@ def nms(
                 - torch.Tensor
                 - [N, ...]
     '''
+    C = cls_spec_conf_score_batch.shape[-1]
 
     # conf_score_mask_batch: [N, ...]
     conf_score_mask_batch = (conf_score_batch >= conf_score_thre).bool()
@@ -259,6 +261,10 @@ def nms(
     conf_score_batch = torch.masked_select(
         conf_score_batch, conf_score_mask_batch
     )
+    cls_spec_conf_score_batch = torch.masked_select(
+        cls_spec_conf_score_batch,
+        conf_score_mask_batch.unsqueeze(-1),
+    ).reshape([-1, C])
 
     # for sorting the coordinates.
     conf_score_batch, sorted_indices = torch.sort(
@@ -269,6 +275,8 @@ def nms(
     x2_batch = x2_batch[sorted_indices]
     y1_batch = y1_batch[sorted_indices]
     y2_batch = y2_batch[sorted_indices]
+
+    cls_spec_conf_score_batch = cls_spec_conf_score_batch[sorted_indices]
 
     i = 0
     while i < len(conf_score_batch) - 1:
@@ -294,7 +302,10 @@ def nms(
         iou_mask = (iou_batch >= iou_thre).bool()
 
         # iou_mask: [M]
-        iou_mask = torch.cat([torch.tensor([True] * i), iou_mask], dim=-1)
+        iou_mask = torch.cat(
+            [torch.tensor([True] * (i + 1)), iou_mask], dim=-1
+        )
+        iou_mask = iou_mask.bool()
 
         # x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch: [M']
         x1_batch = torch.masked_select(x1_batch, iou_mask)
@@ -302,8 +313,20 @@ def nms(
         y1_batch = torch.masked_select(y1_batch, iou_mask)
         y2_batch = torch.masked_select(y2_batch, iou_mask)
         conf_score_batch = torch.masked_select(conf_score_batch, iou_mask)
+        cls_spec_conf_score_batch = torch.masked_select(
+            cls_spec_conf_score_batch, iou_mask.unsqueeze(-1),
+        ).reshape([-1, C])
 
-    return x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch
+        i += 1
+
+    return (
+        x1_batch,
+        x2_batch,
+        y1_batch,
+        y2_batch,
+        conf_score_batch,
+        cls_spec_conf_score_batch,
+    )
 
 
 def cummax(x):
