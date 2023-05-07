@@ -66,7 +66,7 @@ def main():
         collate_fn=model.collate_fn_with_imgaug
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=True,
+        val_dataset, batch_size=1, shuffle=True,
         collate_fn=model.collate_fn
     )
 

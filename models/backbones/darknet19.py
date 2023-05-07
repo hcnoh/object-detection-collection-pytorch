@@ -16,8 +16,8 @@ class Darknet19Backbone(Module):
     def __init__(self) -> None:
         super().__init__()
 
-        self.w_in = 416
-        self.h_in = 416
+        # self.w_in = 416
+        # self.h_in = 416
 
         self.net1 = Sequential(
             Conv2d(

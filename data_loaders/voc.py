@@ -1,11 +1,13 @@
 import os
 import pickle
+# import time
 
 import xml.etree.ElementTree as Et
+import cv2
 
-from PIL import Image
+# from PIL import Image
 from torch.utils.data import Dataset
-from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
+# from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
 
 
 DATASET_DIR = "datasets"
@@ -58,24 +60,24 @@ class VOC:
             with open(self.preprocessed_dataset_path, "rb") as f:
                 (
                     self.train_img_path_list,
-                    self.train_lbl_list,
+                    self.train_annot_list,
                     self.val_img_path_list,
-                    self.val_lbl_list,
+                    self.val_annot_list,
                 ) = pickle.load(f)
 
         else:
             self.preprocess()
 
         self.train_dataset = VOCDataset(
-            self.train_img_path_list, self.train_lbl_list
+            self.train_img_path_list, self.train_annot_list,
         )
         self.val_dataset = VOCDataset(
-            self.val_img_path_list, self.val_lbl_list
+            self.val_img_path_list, self.val_annot_list
         )
 
     def get_path_lists(self, root_annotation_path_list):
         img_path_list = []
-        lbl_path_list = []
+        annot_path_list = []
 
         for root_path in root_annotation_path_list:
             for dir_path, _, file_names in os.walk(root_path):
@@ -86,46 +88,51 @@ class VOC:
                             file_name.replace(".xml", ".jpg"),
                         )
                     )
-                    lbl_path_list.append(
+                    annot_path_list.append(
                         os.path.join(
                             dir_path,
                             file_name,
                         )
                     )
 
-        return img_path_list, lbl_path_list
+        return img_path_list, annot_path_list
 
-    def get_lbl_list(self, lbl_path_list):
-        lbl_list = []
+    def get_annot_list(self, annot_path_list):
+        annot_list = []
 
-        for lbl_path in lbl_path_list:
-            lbl = []
+        for annot_path in annot_path_list:
+            bbox_list = []
+            lbl_list = []
 
-            with open(lbl_path, "r") as xml:
+            with open(annot_path, "r") as xml:
                 tree = Et.parse(xml)
                 root = tree.getroot()
 
-                objects = root.findall("object")
+            objects = root.findall("object")
 
-                for obj in objects:
-                    name = obj.find("name").text
-                    bbox = obj.find("bndbox")
+            for obj in objects:
+                name = obj.find("name").text
+                bbox = obj.find("bndbox")
 
-                    x1 = int(float(bbox.find("xmin").text))
-                    x2 = int(float(bbox.find("xmax").text))
-                    y1 = int(float(bbox.find("ymin").text))
-                    y2 = int(float(bbox.find("ymax").text))
+                x1 = int(float(bbox.find("xmin").text))
+                y1 = int(float(bbox.find("ymin").text))
+                x2 = int(float(bbox.find("xmax").text))
+                y2 = int(float(bbox.find("ymax").text))
 
-                    lbl.append(
-                        BoundingBox(x1=x1, x2=x2, y1=y1, y2=y2, label=name)
-                    )
+                bbox_list.append([x1, y1, x2, y2])
+                lbl_list.append(name)
 
-                lbl_list.append(lbl)
+            annot_list.append(
+                {
+                    "bbox_list": bbox_list,
+                    "lbl_list": lbl_list,
+                }
+            )
 
-        return lbl_list
+        return annot_list
 
     def preprocess(self):
-        train_img_path_list, train_lbl_path_list = self.get_path_lists(
+        train_img_path_list, train_annot_path_list = self.get_path_lists(
             [
                 os.path.join(
                     VOC2012_TRAINVAL_DIR,
@@ -142,11 +149,11 @@ class VOC:
             ]
         )
 
-        train_lbl_list = self.get_lbl_list(
-            train_lbl_path_list,
+        train_annot_list = self.get_annot_list(
+            train_annot_path_list,
         )
 
-        val_img_path_list, val_lbl_path_list = self.get_path_lists(
+        val_img_path_list, val_annot_path_list = self.get_path_lists(
             [
                 os.path.join(
                     VOC2007_TEST_DIR,
@@ -157,41 +164,45 @@ class VOC:
             ]
         )
 
-        val_lbl_list = self.get_lbl_list(
-            val_lbl_path_list,
+        val_annot_list = self.get_annot_list(
+            val_annot_path_list,
         )
 
         self.train_img_path_list = train_img_path_list
-        self.train_lbl_list = train_lbl_list
+        self.train_annot_list = train_annot_list
         self.val_img_path_list = val_img_path_list
-        self.val_lbl_list = val_lbl_list
+        self.val_annot_list = val_annot_list
 
         with open(self.preprocessed_dataset_path, "wb") as f:
             pickle.dump(
                 (
                     self.train_img_path_list,
-                    self.train_lbl_list,
+                    self.train_annot_list,
                     self.val_img_path_list,
-                    self.val_lbl_list,
+                    self.val_annot_list,
                 ),
                 f
             )
 
 
 class VOCDataset(Dataset):
-    def __init__(self, img_paths, lbls) -> None:
+    def __init__(self, img_path_list, annot_list) -> None:
         super().__init__()
 
-        self.img_paths = img_paths
-        self.lbls = lbls
+        self.img_path_list = img_path_list
+        self.annot_list = annot_list
 
     def __getitem__(self, index):
-        img_path = self.img_paths[index]
+        img_path = self.img_path_list[index]
+        img = cv2.imread(img_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        img = Image.open(img_path)
-        lbl = BoundingBoxesOnImage(self.lbls[index], shape=img.size)
+        annot = self.annot_list[index]
 
-        return index, img, lbl
+        # img = Image.open(img_path)
+        # lbl = BoundingBoxesOnImage(self.annot_list[index], shape=img.size)
+
+        return index, img, annot
 
     def __len__(self):
-        return len(self.img_paths)
+        return len(self.img_path_list)

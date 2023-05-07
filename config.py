@@ -8,9 +8,7 @@ MODEL_CONFIG = {
         "S": 7,
         "B": 2,
     },
-    "YOLOv2": {
-        "S": 13,
-    },
+    "YOLOv2": {},
 }
 
 TRAIN_CONFIG = {
