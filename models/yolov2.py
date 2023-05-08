@@ -1575,35 +1575,16 @@ class YOLOv2(Module):
                     "lbl_list": transformed["labels"],
                 }
 
-            transformed = self.resize(
-                image=img, bboxes=annot["bbox_list"],
-                labels=annot["lbl_list"],
-            )
+                transformed = self.resize(
+                    image=img, bboxes=annot["bbox_list"],
+                    labels=annot["lbl_list"],
+                )
 
-            img = transformed["image"]
-            annot = {
-                "bbox_list": transformed["bboxes"],
-                "lbl_list": transformed["labels"],
-            }
-
-            # img = np.array(img)
-
-            # if augmentation:
-            #     img_aug, bbox_aug_list = augmenter(
-            #         image=img, bounding_boxes=bbox_list
-            #     )
-
-            # else:
-            #     img_aug, bbox_aug_list = img, bbox_list
-
-            # img_aug, bbox_aug_list = resize(
-            #     image=img_aug, bounding_boxes=bbox_aug_list
-            # )
-
-            # bbox_aug_list = (
-            #     bbox_aug_list
-            #     .remove_out_of_image().clip_out_of_image()
-            # )
+                img = transformed["image"]
+                annot = {
+                    "bbox_list": transformed["bboxes"],
+                    "lbl_list": transformed["labels"],
+                }
 
             x = torch.tensor(img).to(DEVICE)
             x_batch.append(x)
