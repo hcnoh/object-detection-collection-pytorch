@@ -35,10 +35,10 @@ TRAIN_CONFIG = {
                 1e-4,
                 1e-5,
             ],
-            "num_epochs_list": [
-                120,
+            "num_epoch_list": [
                 60,
-                140,
+                30,
+                70,
             ],
             "lambda_xy": 0.5,
             "lambda_wh": 0.5,
