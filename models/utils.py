@@ -66,7 +66,7 @@ def nms(
     y2_batch,
     conf_score_batch,
     cls_spec_conf_score_batch,
-    conf_score_thre=0.6,
+    conf_score_thre=0.9,
     iou_thre=0.5,
 ):
     '''
@@ -95,10 +95,10 @@ def nms(
     '''conf_score_mask_batch: [N, ...]'''
     conf_score_mask_batch = (conf_score_batch >= conf_score_thre).bool()
 
-    '''x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch: [M]'''
+    '''x1_batch, y1_batch, x2_batch, y2_batch, conf_score_batch: [M]'''
     x1_batch = torch.masked_select(x1_batch, conf_score_mask_batch)
-    x2_batch = torch.masked_select(x2_batch, conf_score_mask_batch)
     y1_batch = torch.masked_select(y1_batch, conf_score_mask_batch)
+    x2_batch = torch.masked_select(x2_batch, conf_score_mask_batch)
     y2_batch = torch.masked_select(y2_batch, conf_score_mask_batch)
     conf_score_batch = torch.masked_select(
         conf_score_batch, conf_score_mask_batch
@@ -114,29 +114,29 @@ def nms(
     )
 
     x1_batch = x1_batch[sorted_indices]
-    x2_batch = x2_batch[sorted_indices]
     y1_batch = y1_batch[sorted_indices]
+    x2_batch = x2_batch[sorted_indices]
     y2_batch = y2_batch[sorted_indices]
 
     cls_spec_conf_score_batch = cls_spec_conf_score_batch[sorted_indices]
 
     i = 0
     while i < len(conf_score_batch) - 1:
-        '''x1_tgt, x2_tgt, y1_tgt, y2_tgt: [1]'''
+        '''x1_tgt, y1_tgt, x2_tgt, y2_tgt: [1]'''
         x1_tgt = x1_batch[i:i + 1]
-        x2_tgt = x2_batch[i:i + 1]
         y1_tgt = y1_batch[i:i + 1]
+        x2_tgt = x2_batch[i:i + 1]
         y2_tgt = y2_batch[i:i + 1]
 
         '''iou_batch: [M - i]'''
         iou_batch = get_iou(
             x1_tgt,
-            x2_tgt,
             y1_tgt,
+            x2_tgt,
             y2_tgt,
             x1_batch[i + 1:],
-            x2_batch[i + 1:],
             y1_batch[i + 1:],
+            x2_batch[i + 1:],
             y2_batch[i + 1:],
         )
 
@@ -149,10 +149,10 @@ def nms(
         )
         iou_mask = iou_mask.bool()
 
-        '''x1_batch, x2_batch, y1_batch, y2_batch, conf_score_batch: [M']'''
+        '''x1_batch, y1_batch, x2_batch, y2_batch, conf_score_batch: [M']'''
         x1_batch = torch.masked_select(x1_batch, iou_mask)
-        x2_batch = torch.masked_select(x2_batch, iou_mask)
         y1_batch = torch.masked_select(y1_batch, iou_mask)
+        x2_batch = torch.masked_select(x2_batch, iou_mask)
         y2_batch = torch.masked_select(y2_batch, iou_mask)
         conf_score_batch = torch.masked_select(conf_score_batch, iou_mask)
         cls_spec_conf_score_batch = torch.masked_select(
