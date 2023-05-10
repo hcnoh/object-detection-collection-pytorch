@@ -3,50 +3,56 @@ import torch
 
 
 def get_iou(
-    x1_batch,
-    y1_batch,
-    x2_batch,
-    y2_batch,
-    x1_hat_batch,
-    y1_hat_batch,
-    x2_hat_batch,
-    y2_hat_batch,
+    coord1_batch,
+    coord2_batch,
+    numpy=False,
 ):
     '''
-        Returns the IOU batch from x1, y1, x2, y2, x1_hat, y1_hat, x2_hat,
-        y2_hat batches
+        Returns the IOU batch from coord1_batch and coord2_batch
+
+        coord: [x1, y1, x2, y2]
 
         Args:
-            x1_batch:
-                - [N, ...]
-            y1_batch:
-                - [N, ...]
-            x2_batch:
-                - [N, ...]
-            y2_batch:
-                - [N, ...]
-            x1_hat_batch:
-                - [N, ...]
-            y1_hat_batch:
-                - [N, ...]
-            x2_hat_batch:
-                - [N, ...]
-            y2_hat_batch:
-                - [N, ...]
+            coord1_batch:
+                - [..., 4]
+            coord2_batch:
+                - [..., 4]
 
         Returns:
             iou_batch:
-                - [N, ...]
+                - [...]
     '''
-    intsec_x1_batch = torch.maximum(x1_batch, x1_hat_batch)
-    intsec_y1_batch = torch.maximum(y1_batch, y1_hat_batch)
-    intsec_x2_batch = torch.minimum(x2_batch, x2_hat_batch)
-    intsec_y2_batch = torch.minimum(y2_batch, y2_hat_batch)
+    x1_batch = coord1_batch[..., 0]
+    y1_batch = coord1_batch[..., 1]
+    x2_batch = coord1_batch[..., 2]
+    y2_batch = coord1_batch[..., 3]
 
-    intsec_batch = (
-        torch.clamp(intsec_x2_batch - intsec_x1_batch, min=0) *
-        torch.clamp(intsec_y2_batch - intsec_y1_batch, min=0)
-    )
+    x1_hat_batch = coord2_batch[..., 0]
+    y1_hat_batch = coord2_batch[..., 1]
+    x2_hat_batch = coord2_batch[..., 2]
+    y2_hat_batch = coord2_batch[..., 3]
+
+    if numpy:
+        intsec_x1_batch = np.maximum(x1_batch, x1_hat_batch)
+        intsec_y1_batch = np.maximum(y1_batch, y1_hat_batch)
+        intsec_x2_batch = np.minimum(x2_batch, x2_hat_batch)
+        intsec_y2_batch = np.minimum(y2_batch, y2_hat_batch)
+
+        intsec_batch = (
+            np.clip(intsec_x2_batch - intsec_x1_batch, a_min=0) *
+            np.clip(intsec_y2_batch - intsec_y1_batch, a_min=0)
+        )
+
+    else:
+        intsec_x1_batch = torch.maximum(x1_batch, x1_hat_batch)
+        intsec_y1_batch = torch.maximum(y1_batch, y1_hat_batch)
+        intsec_x2_batch = torch.minimum(x2_batch, x2_hat_batch)
+        intsec_y2_batch = torch.minimum(y2_batch, y2_hat_batch)
+
+        intsec_batch = (
+            torch.clamp(intsec_x2_batch - intsec_x1_batch, min=0) *
+            torch.clamp(intsec_y2_batch - intsec_y1_batch, min=0)
+        )
 
     union_batch = (
         (x2_batch - x1_batch) * (y2_batch - y1_batch) +
@@ -60,84 +66,67 @@ def get_iou(
 
 
 def nms(
-    x1_batch,
-    y1_batch,
-    x2_batch,
-    y2_batch,
+    bbox_coord_batch,
     conf_score_batch,
     cls_spec_conf_score_batch,
     conf_score_thre=0.9,
     iou_thre=0.5,
 ):
     '''
+        coord: [x1, y1, x2, y2]
+
         Args:
-            x1_batch:
+            bbox_coord_batch:
                 - torch.Tensor
-                - [N, ...]
-            y1_batch:
-                - torch.Tensor
-                - [N, ...]
-            x2_batch:
-                - torch.Tensor
-                - [N, ...]
-            y2_batch:
-                - torch.Tensor
-                - [N, ...]
+                - [..., 4]
             conf_score_batch:
                 - torch.Tensor
-                - [N, ...]
+                - [...]
             cls_spec_conf_score_batch:
                 - torch.Tensor
-                - [N, ..., num_cls]
+                - [..., num_cls]
     '''
-    C = cls_spec_conf_score_batch.shape[-1]
+    num_cls = cls_spec_conf_score_batch.shape[-1]
 
-    '''conf_score_mask_batch: [N, ...]'''
+    '''conf_score_mask_batch: [...]'''
     conf_score_mask_batch = (conf_score_batch >= conf_score_thre).bool()
 
-    '''x1_batch, y1_batch, x2_batch, y2_batch, conf_score_batch: [M]'''
-    x1_batch = torch.masked_select(x1_batch, conf_score_mask_batch)
-    y1_batch = torch.masked_select(y1_batch, conf_score_mask_batch)
-    x2_batch = torch.masked_select(x2_batch, conf_score_mask_batch)
-    y2_batch = torch.masked_select(y2_batch, conf_score_mask_batch)
+    '''
+    bbox_coord_batch: [M, 4]
+    conf_score_batch: [M]
+    cls_spec_conf_score_batch: [M, num_cls]
+    '''
+    bbox_coord_batch = (
+        torch.masked_select(
+            bbox_coord_batch, conf_score_mask_batch.unsqueeze(-1)
+        ).reshape([-1, 4])
+    )
     conf_score_batch = torch.masked_select(
         conf_score_batch, conf_score_mask_batch
     )
-    cls_spec_conf_score_batch = torch.masked_select(
-        cls_spec_conf_score_batch,
-        conf_score_mask_batch.unsqueeze(-1),
-    ).reshape([-1, C])
+    cls_spec_conf_score_batch = (
+        torch.masked_select(
+            cls_spec_conf_score_batch,
+            conf_score_mask_batch.unsqueeze(-1),
+        )
+        .reshape([-1, num_cls])
+    )
 
     '''for sorting the coordinates.'''
     conf_score_batch, sorted_indices = torch.sort(
         conf_score_batch, descending=True
     )
 
-    x1_batch = x1_batch[sorted_indices]
-    y1_batch = y1_batch[sorted_indices]
-    x2_batch = x2_batch[sorted_indices]
-    y2_batch = y2_batch[sorted_indices]
+    bbox_coord_batch = bbox_coord_batch[sorted_indices]
 
     cls_spec_conf_score_batch = cls_spec_conf_score_batch[sorted_indices]
 
     i = 0
     while i < len(conf_score_batch) - 1:
-        '''x1_tgt, y1_tgt, x2_tgt, y2_tgt: [1]'''
-        x1_tgt = x1_batch[i:i + 1]
-        y1_tgt = y1_batch[i:i + 1]
-        x2_tgt = x2_batch[i:i + 1]
-        y2_tgt = y2_batch[i:i + 1]
-
         '''iou_batch: [M - i]'''
         iou_batch = get_iou(
-            x1_tgt,
-            y1_tgt,
-            x2_tgt,
-            y2_tgt,
-            x1_batch[i + 1:],
-            y1_batch[i + 1:],
-            x2_batch[i + 1:],
-            y2_batch[i + 1:],
+            bbox_coord_batch[i:i + 1],
+            bbox_coord_batch[i + 1:],
         )
 
         '''iou_mask: [M - i]'''
@@ -149,23 +138,27 @@ def nms(
         )
         iou_mask = iou_mask.bool()
 
-        '''x1_batch, y1_batch, x2_batch, y2_batch, conf_score_batch: [M']'''
-        x1_batch = torch.masked_select(x1_batch, iou_mask)
-        y1_batch = torch.masked_select(y1_batch, iou_mask)
-        x2_batch = torch.masked_select(x2_batch, iou_mask)
-        y2_batch = torch.masked_select(y2_batch, iou_mask)
+        '''
+        coord_batch: [M', 4]
+        conf_score_batch: [M']
+        cls_spec_conf_score_batch: [M', num_cls]
+        '''
+        bbox_coord_batch = (
+            torch.masked_select(bbox_coord_batch, iou_mask.unsqueeze(-1))
+            .reshape([-1, 4])
+        )
         conf_score_batch = torch.masked_select(conf_score_batch, iou_mask)
-        cls_spec_conf_score_batch = torch.masked_select(
-            cls_spec_conf_score_batch, iou_mask.unsqueeze(-1),
-        ).reshape([-1, C])
+        cls_spec_conf_score_batch = (
+            torch.masked_select(
+                cls_spec_conf_score_batch, iou_mask.unsqueeze(-1),
+            )
+            .reshape([-1, num_cls])
+        )
 
         i += 1
 
     return (
-        x1_batch,
-        y1_batch,
-        x2_batch,
-        y2_batch,
+        bbox_coord_batch,
         conf_score_batch,
         cls_spec_conf_score_batch,
     )
