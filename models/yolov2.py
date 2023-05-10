@@ -1480,41 +1480,151 @@ class YOLOv2(Module):
         iou_thre=0.5,
         level_list=[.50, .55, .60, .65, .70, .75, .80, .85, .90, .95],
     ):
-        iou_batch = []
-        cls_tgt_batch = []
-        cls_score_batch = []
-        bbox_img_id_batch = []
+        eps = 1e-6
+
+        '''level_list: [num_level]'''
+        level_list = np.array(level_list)
+
+        cls_spec_tp_list = {
+            c: [] for c in self.cls_list
+        }
+        cls_spec_fp_list = {
+            c: [] for c in self.cls_list
+        }
+        cls_spec_conf_score_list = {
+            c: [] for c in self.cls_list
+        }
+        cls_spec_num_gt_list = {
+            c: 0 for c in self.cls_list
+        }
 
         dataset_size = len(dataset)
         progress_size = 0
 
         for _, img, annot in dataset:
             progress_size += 1
+            if progress_size > 1000:
+                break
 
             print(
                 "Evaluation: [{} / {}]".format(progress_size, dataset_size),
                 end="\r"
             )
 
+            '''
+            coord_batch: [num_bbox, 4]
+            cls_batch: [num_bbox]
+            '''
+            coord_batch = np.array(annot["bbox_list"])
+            cls_batch = np.array(annot["lbl_list"])
+
+            for cls in self.cls_list:
+                cls_spec_num_gt_list[cls] += np.sum(cls_batch == cls)
+
             annot_pred = self.detect(img, conf_score_thre, iou_thre)
 
             '''
-            coord_pred_batch: [num_bbox, 4]
-            cls_spec_conf_score_pred_batch: [num_bbox, num_cls]
+            coord_pred_batch: [num_bbox_pred, 4]
+            cls_pred_batch: [num_bbox_pred]
+            cls_spec_conf_score_pred_batch: [num_bbox_pred, num_cls]
             '''
-            coord_pred_batch = annot_pred["bbox_list"]
-            cls_spec_conf_score_pred_batch = (
+            coord_pred_batch = np.array(annot_pred["bbox_list"])
+            cls_pred_batch = np.array(annot_pred["lbl_list"])
+            cls_spec_conf_score_pred_batch = np.array(
                 annot_pred["cls_spec_conf_score_list"]
             )
 
-            for coord_tgt in annot["bbox_list"]:
-                '''coord_tgt_batch: [1, 4]'''
-                coord_tgt_batch = [coord_tgt]
+            for coord_pred, cls_pred, cls_spec_conf_score_pred in zip(
+                coord_pred_batch,
+                cls_pred_batch,
+                cls_spec_conf_score_pred_batch,
+            ):
+                '''cls_mask_batch: [num_bbox]'''
+                cls_mask_batch = cls_batch == cls_pred
 
-                '''iou_batch: [num_bbox]'''
+                '''
+                coord_tgt_batch: [num_bbox_tgt, 4]
+                cls_tgt_batch: [num_bbox_tgt]
+                '''
+                coord_tgt_batch = coord_batch[np.where(cls_mask_batch)]
+
+                '''coord_pred: [1, 4]'''
+                coord_pred = np.array([coord_pred])
+
+                '''iou_batch: [num_bbox_tgt]'''
                 iou_batch = get_iou(
-                    coord_tgt_batch, coord_pred_batch, numpy=True
+                    coord_tgt_batch, coord_pred, numpy=True
                 )
+
+                '''
+                tp, fp: [num_bbox_tgt, num_level] -> [num_level]
+                '''
+                fp = (
+                    (np.expand_dims(iou_batch, axis=-1) < level_list)
+                    .astype(int)
+                )
+                fp = (fp.prod(0) >= 1).astype(int)
+
+                tp = 1 - fp
+
+                cls_spec_tp_list[cls_pred].append(tp)
+                cls_spec_fp_list[cls_pred].append(fp)
+                (
+                    cls_spec_conf_score_list[cls_pred]
+                    .append(cls_spec_conf_score_pred)
+                )
+
+        # print("=====================================")
+        # print(cls_spec_tp_list)
+        # print(cls_spec_fp_list)
+        # print(cls_spec_conf_score_list)
+        # print(cls_spec_num_gt_list)
+        # print("=====================================")
+
+        for cls in self.cls_list:
+            print("=====================================")
+            print(cls)
+            '''
+            tp_list: [num_bbox, num_level]
+            fp_list: [num_bbox, num_level]
+            conf_score_list: [num_bbox]
+            num_gt: []
+            '''
+            tp_list = np.vstack(cls_spec_tp_list[cls])
+            fp_list = np.vstack(cls_spec_fp_list[cls])
+            conf_score_list = np.array(cls_spec_conf_score_list[cls])
+            num_gt = cls_spec_num_gt_list[cls]
+
+            sorted_indices = np.argsort(conf_score_list)[::-1]
+
+            '''
+            sorted_tp_list: [num_bbox, num_level]
+            sorted_fp_list: [num_bbox, num_level]
+            sorted_conf_score_list: [num_bbox]
+            '''
+            sorted_tp_list = tp_list[sorted_indices]
+            sorted_fp_list = fp_list[sorted_indices]
+            sorted_conf_score_list = conf_score_list[sorted_indices]
+
+            '''
+            sorted_tp_list_cumsum: [num_bbox, num_level]
+            sorted_fp_list_cumsum: [num_bbox, num_level]
+            '''
+            sorted_tp_list_cumsum = np.cumsum(sorted_tp_list, axis=0)
+            sorted_fp_list_cumsum = np.cumsum(sorted_fp_list, axis=0)
+
+            '''
+            sorted_prec_list: [num_bbox, num_level]
+            sorted_rec_list: [num_bbox, num_level]
+            '''
+            sorted_prec_list = (
+                sorted_tp_list_cumsum /
+                (sorted_tp_list_cumsum + sorted_fp_list_cumsum + eps)
+            )
+            sorted_rec_list = sorted_tp_list_cumsum / (num_gt + eps)
+
+            print(sorted_prec_list.T)
+            print(sorted_rec_list.T)
 
     def evaluate_model_temp(
         self,

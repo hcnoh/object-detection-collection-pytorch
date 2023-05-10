@@ -39,8 +39,8 @@ def get_iou(
         intsec_y2_batch = np.minimum(y2_batch, y2_hat_batch)
 
         intsec_batch = (
-            np.clip(intsec_x2_batch - intsec_x1_batch, a_min=0) *
-            np.clip(intsec_y2_batch - intsec_y1_batch, a_min=0)
+            np.clip(intsec_x2_batch - intsec_x1_batch, a_min=0, a_max=None) *
+            np.clip(intsec_y2_batch - intsec_y1_batch, a_min=0, a_max=None)
         )
 
     else:
