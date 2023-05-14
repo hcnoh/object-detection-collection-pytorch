@@ -14,7 +14,7 @@ from torch.optim import SGD
 
 from config import DEVICE
 from models.backbones.darknet19 import Darknet19Backbone
-from models.utils import get_iou, get_aps, nms
+from models.utils import get_iou, get_aps, nms, cummax
 
 
 TRANSFORM = albumentations.Compose(
@@ -1344,134 +1344,6 @@ class YOLOv2(Module):
                 f
             )
 
-    def evaluate_one_step(
-        self,
-        y_pred_batch,
-        coord_batch,
-        cls_tgt_batch,
-        x_img_id_batch,
-        bbox_img_id_batch,
-    ):
-        '''
-            N: batch_size
-            M: the # of bounding boxes in the given batch
-
-            Args:
-                y_pred_batch:
-                    - the model's prediction on the given targets
-                    - [N, S, S, B * (5 + C)]
-                coord_batch:
-                    - the given coordinates for the all bounding boxes
-                    - [M, S, S, 4]
-                cls_tgt_batch:
-                    - the given class targets as onehot vectors
-                    - [M, S, S, C]
-                x_img_id_batch:
-                    - the image IDs for the given input
-                    - [N]
-                bbox_img_id_batch:
-                    - the image IDs for the given bounding boxes
-                    - [M]
-        '''
-        S = self.S
-        C = self.C
-
-        # bbox_img_id_to_x_img_id_mapper: [M, N] -> [M]
-        bbox_img_id_to_x_img_id_mapper = (
-            (
-                bbox_img_id_batch.unsqueeze(-1) ==
-                x_img_id_batch.unsqueeze(0)
-            ).long()
-            .argmax(-1)
-        )
-
-        # y_pred_batch: [N, S, S, B * (5 + C)] -> [M, S, S, B * (5 + C)]
-        y_pred_batch = y_pred_batch[bbox_img_id_to_x_img_id_mapper]
-
-        # bx_norm_pred_batch, by_norm_pred_batch : [M, S, S, B]
-        # bw_pred_batch, bh_pred_batch: [M, S, S, B]
-        # conf_score_pred_batch: [M, S, S, B]
-        # cond_cls_prob_pred_batch: [M, S, S, B, C]
-        bx_norm_pred_batch = y_pred_batch[..., 0::5 + C]
-        by_norm_pred_batch = y_pred_batch[..., 1::5 + C]
-        bw_pred_batch = y_pred_batch[..., 2::5 + C]
-        bh_pred_batch = y_pred_batch[..., 3::5 + C]
-        conf_score_pred_batch = y_pred_batch[..., 4::5 + C]
-        cond_cls_prob_pred_batch = torch.stack(
-            [y_pred_batch[..., i::5 + C] for i in range(5, 5 + C)],
-            dim=-1
-        )
-
-        # cy_batch: [1, S, 1, 1]
-        # cx_batch: [1, 1, S, 1]
-        cy_batch = (
-            torch.arange(S).to(DEVICE)
-            .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-        )
-        cx_batch = (
-            torch.arange(S).to(DEVICE)
-            .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
-        )
-
-        # bx_pred_batch, by_pred_batch: [M, S, S, B]
-        bx_pred_batch = (
-            cx_batch + bx_norm_pred_batch
-        )
-        by_pred_batch = (
-            cy_batch + by_norm_pred_batch
-        )
-
-        # x1_pred_batch, x2_pred_batch,
-        # y1_pred_batch, y2_pred_batch: [M, S, S, B]
-        x1_pred_batch = bx_pred_batch - (bw_pred_batch / 2)
-        x2_pred_batch = bx_pred_batch + (bw_pred_batch / 2)
-        y1_pred_batch = by_pred_batch - (bh_pred_batch / 2)
-        y2_pred_batch = by_pred_batch + (bh_pred_batch / 2)
-
-        # x1_tgt_batch, x2_tgt_batch,
-        # y1_tgt_batch, y2_tgt_batch: [M, S, S, 1]
-        x1_tgt_batch = coord_batch[:, :, :, 0].unsqueeze(-1)
-        x2_tgt_batch = coord_batch[:, :, :, 1].unsqueeze(-1)
-        y1_tgt_batch = coord_batch[:, :, :, 2].unsqueeze(-1)
-        y2_tgt_batch = coord_batch[:, :, :, 3].unsqueeze(-1)
-
-        # iou_batch: [M, S, S, B]
-        iou_batch = get_iou(
-            x1_tgt_batch,
-            x2_tgt_batch,
-            y1_tgt_batch,
-            y2_tgt_batch,
-            x1_pred_batch,
-            x2_pred_batch,
-            y1_pred_batch,
-            y2_pred_batch,
-        ).detach()
-
-        # cls_tgt_batch: [M, S, S, C] -> [M, C]
-        cls_tgt_batch = (cls_tgt_batch.sum(1).sum(1) != 0)
-
-        # cls_spec_conf_score_pred_batch: [M, S, S, B, C]
-        cls_spec_conf_score_pred_batch = (
-            cond_cls_prob_pred_batch *
-            conf_score_pred_batch.unsqueeze(-1)
-        )
-
-        # iou_batch: [M, S, S, B]
-        # cls_tgt_batch: [M, C]
-        # cls_score_batch: [M, S, S, B, C]
-        # bbox_img_id_batch: [M]
-        iou_batch = iou_batch.detach().cpu().numpy()
-        cls_tgt_batch = cls_tgt_batch.detach().cpu().numpy()
-        cls_score_batch = cls_spec_conf_score_pred_batch.detach().cpu().numpy()
-        bbox_img_id_batch = bbox_img_id_batch.detach().cpu().numpy()
-
-        return (
-            iou_batch,
-            cls_tgt_batch,
-            cls_score_batch,
-            bbox_img_id_batch,
-        )
-
     def evaluate_model(
         self,
         dataset,
@@ -1604,7 +1476,7 @@ class YOLOv2(Module):
             '''
             sorted_tp_list = tp_list[sorted_indices]
             sorted_fp_list = fp_list[sorted_indices]
-            sorted_conf_score_list = conf_score_list[sorted_indices]
+            # sorted_conf_score_list = conf_score_list[sorted_indices]
 
             '''
             sorted_tp_list_cumsum: [num_bbox, num_level]
@@ -1623,104 +1495,29 @@ class YOLOv2(Module):
             )
             sorted_rec_list = sorted_tp_list_cumsum / (num_gt + eps)
 
-            print(sorted_prec_list.T)
-            print(sorted_rec_list.T)
+            # print("sorted_prec_list, sorted_rec_list")
+            # print(sorted_prec_list.T)
+            # print(sorted_rec_list.T)
 
-    def evaluate_model_temp(
-        self,
-        data_loader,
-        ckpt_path,
-    ):
-        iou_batch = []
-        cls_tgt_batch = []
-        cls_score_batch = []
-        bbox_img_id_batch = []
-
-        dataset_size = len(data_loader.dataset)
-        progress_size = 0
-
-        for batch in data_loader:
-            # N: batch_size
-            # M: the # of bboxes in the given batch
-
-            # x_batch_one_step: [N, H, W, 3]
-            # coord_batch_one_step: [M, S, S, 4]
-            # cls_tgt_batch_one_step: [M, S, S, C]
-            # x_img_id_batch_one_step: [N]
-            # bbox_img_id_batch_one_step: [M]
-            (
-                x_batch_one_step,
-                _,
-                coord_batch_one_step,
-                cls_tgt_batch_one_step,
-                _,
-                x_img_id_batch_one_step,
-                bbox_img_id_batch_one_step,
-            ) = batch
-
-            N = x_batch_one_step.shape[0]
-
-            progress_size += N
-
-            print(
-                "Evaluation: [{} / {}]".format(progress_size, dataset_size),
-                end="\r"
+            '''sorted_prec_list_reverse_cummax: [num_bbox, num_level]'''
+            '''sorted_rec_diff_list: [num_bbox, num_level]'''
+            sorted_prec_list_reverse_cummax = (
+                cummax(sorted_prec_list[::-1], axis=0)[::-1]
             )
+            # print("sorted_prec_list_reverse_cummax, sorted_rec_diff_list")
+            # print(sorted_prec_list_reverse_cummax.T)
 
-            self.eval()
+            sorted_rec_diff_list = np.zeros_like(sorted_rec_list)
+            sorted_rec_diff_list[1:] = sorted_rec_list[:-1]
+            # print(sorted_rec_diff_list.T)
+            sorted_rec_diff_list = sorted_rec_list - sorted_rec_diff_list
+            # print(sorted_rec_diff_list.T)
 
-            # y_pred_batch_one_step: [N, S, S, B * (5 + C)]
-            y_pred_batch_one_step = self(x_batch_one_step)
-
-            # iou_batch_one_step: [M, S, S, B]
-            # cls_tgt_batch_one_step: [M, C]
-            # cls_score_batch_one_step: [M, S, S, B, C]
-            # bbox_img_id_batch_one_step: [M]
-            (
-                iou_batch_one_step,
-                cls_tgt_batch_one_step,
-                cls_score_batch_one_step,
-                bbox_img_id_batch_one_step,
-            ) = self.evaluate_one_step(
-                y_pred_batch_one_step,
-                coord_batch_one_step,
-                cls_tgt_batch_one_step,
-                x_img_id_batch_one_step,
-                bbox_img_id_batch_one_step,
+            '''ap: []'''
+            ap = np.sum(
+                sorted_prec_list_reverse_cummax * sorted_rec_diff_list, axis=0
             )
-
-            iou_batch.append(iou_batch_one_step)
-            cls_tgt_batch.append(cls_tgt_batch_one_step)
-            cls_score_batch.append(cls_score_batch_one_step)
-            bbox_img_id_batch.append(bbox_img_id_batch_one_step)
-
-            # if progress_size > 500:
-            #     break
-
-        # iou_batch: [M, S, S, B]
-        # cls_tgt_batch: [M, C]
-        # cls_score_batch: [M, S, S, B, C]
-        # bbox_img_id_batch: [M]
-        iou_batch = np.vstack(iou_batch)
-        cls_tgt_batch = np.vstack(cls_tgt_batch)
-        cls_score_batch = np.vstack(cls_score_batch)
-        bbox_img_id_batch = np.hstack(bbox_img_id_batch)
-
-        aps = get_aps(
-            iou_batch,
-            cls_tgt_batch,
-            cls_score_batch,
-            bbox_img_id_batch,
-        )
-
-        print("Evaluation Results:")
-        print(aps)
-
-        with open(
-            os.path.join(ckpt_path, "evaluation_result.pkl"),
-            "wb",
-        ) as f:
-            pickle.dump(aps, f)
+            print(ap)
 
     def collate_fn_with_imgaug(self, batch):
         return self.collate_fn(batch, augmentation=True)

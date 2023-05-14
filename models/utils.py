@@ -164,8 +164,8 @@ def nms(
     )
 
 
-def cummax(x):
-    return np.array([np.max(x[:i + 1]) for i in range(len(x))])
+def cummax(x, axis=-1):
+    return np.array([np.max(x[:i + 1], axis=axis) for i in range(len(x))])
 
 
 def get_aps(
