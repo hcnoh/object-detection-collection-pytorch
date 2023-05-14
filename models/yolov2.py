@@ -14,7 +14,7 @@ from torch.optim import SGD
 
 from config import DEVICE
 from models.backbones.darknet19 import Darknet19Backbone
-from models.utils import get_iou, get_aps, nms, cummax
+from models.utils import get_iou, nms, cummax
 
 
 TRANSFORM = albumentations.Compose(
