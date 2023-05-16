@@ -40,10 +40,10 @@ TRAIN_CONFIG = {
                 30,
                 70,
             ],
-            "lambda_xy": 0.5,
-            "lambda_wh": 0.5,
+            "lambda_xy": 5.0,
+            "lambda_wh": 5.0,
             "lambda_conf": 1.0,
-            "lambda_noobj": 1.0,
+            "lambda_noobj": 0.5,
             "lambda_cls": 1.0,
         }
     },
