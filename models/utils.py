@@ -330,10 +330,12 @@ def evaluate_model(
 
         evaluation_result[cls] = ap
 
-    print(evaluation_result["level_list"])
-    for cls in model.cls_list:
-        print("Class: {}".format(cls))
-        print("APs: {}".format(evaluation_result[cls]))
+    # print(evaluation_result["level_list"])
+    # for cls in model.cls_list:
+    #     print("Class: {}".format(cls))
+    #     print("APs: {}".format(evaluation_result[cls]))
+
+    return evaluation_result
 
 
 def get_aps(
