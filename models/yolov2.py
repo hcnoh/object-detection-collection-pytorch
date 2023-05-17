@@ -327,8 +327,7 @@ class YOLOv2(Module):
         num_cls = self.num_cls
 
         '''
-        anchor_box_width_list, anchor_box_height_list:
-            - [1, 1, 1, num_anchor_box]
+        pw, ph: [1, 1, 1, num_anchor_box]
         '''
         pw = (
             self.anchor_box_width_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
@@ -464,13 +463,15 @@ class YOLOv2(Module):
             - [
                 batch_size,
                 num_grid_cell_in_height,
-                num_grid_cell_width,
+                num_grid_cell_in_width,
                 num_anchor_box * (5 + num_cls),
             ]
         '''
         y_pred_batch = self(x_batch)
 
-        _, num_grid_cell_height, num_grid_cell_width, _ = y_pred_batch.shape
+        _, num_grid_cell_in_height, num_grid_cell_in_width, _ = (
+            y_pred_batch.shape
+        )
         num_cls = self.num_cls
 
         '''
@@ -478,15 +479,15 @@ class YOLOv2(Module):
         bw_pred_batch, bh_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ]
         bbox_norm_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 4,
             ]
@@ -508,17 +509,17 @@ class YOLOv2(Module):
 
         '''
         cy_batch:
-            - [1, num_grid_cell_height, 1, 1]
+            - [1, num_grid_cell_in_height, 1, 1]
         cx_batch:
-            - [1, 1, num_grid_cell_width, 1]
+            - [1, 1, num_grid_cell_in_width, 1]
         '''
         cy_batch = (
-            torch.arange(num_grid_cell_height).to(DEVICE)
+            torch.arange(num_grid_cell_in_height).to(DEVICE)
             .unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
             .detach()
         )
         cx_batch = (
-            torch.arange(num_grid_cell_width).to(DEVICE)
+            torch.arange(num_grid_cell_in_width).to(DEVICE)
             .unsqueeze(0).unsqueeze(0).unsqueeze(-1)
             .detach()
         )
@@ -527,8 +528,8 @@ class YOLOv2(Module):
         bx_pred_batch, by_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ]
         '''
@@ -546,15 +547,15 @@ class YOLOv2(Module):
         x2_norm_pred_batch, y2_norm_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ]
         bbox_coord_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 4,
             ]
@@ -564,8 +565,8 @@ class YOLOv2(Module):
         x2_norm_pred_batch = bx_pred_batch + (bw_pred_batch / 2)
         y2_norm_pred_batch = by_pred_batch + (bh_pred_batch / 2)
 
-        grid_cell_height = height / num_grid_cell_height
-        grid_cell_width = width / num_grid_cell_width
+        grid_cell_height = height / num_grid_cell_in_height
+        grid_cell_width = width / num_grid_cell_in_width
 
         x1_pred_batch = x1_norm_pred_batch * grid_cell_width
         y1_pred_batch = y1_norm_pred_batch * grid_cell_height
@@ -586,15 +587,15 @@ class YOLOv2(Module):
         conf_score_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ]
         cond_cls_prob_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 num_cls,
             ]
@@ -609,8 +610,8 @@ class YOLOv2(Module):
         cls_spec_conf_score_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 num_cls,
             ]
@@ -650,23 +651,23 @@ class YOLOv2(Module):
         bbox_coord_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 4,
             ]
         conf_score_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ]
         cls_spec_conf_score_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 num_cls,
             ]
@@ -787,8 +788,7 @@ class YOLOv2(Module):
         num_anchor_box = self.num_anchor_box
 
         '''
-        pw, ph:
-            - [1, 1, 1, num_anchor_box]
+        pw, ph: [1, 1, 1, num_anchor_box]
         '''
         pw = self.anchor_box_width_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
         ph = self.anchor_box_height_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
@@ -809,43 +809,43 @@ class YOLOv2(Module):
         bbox_norm_pred_batch, bbox_coord_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 4,
             ] ->
             [
                 num_bbox,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 4,
             ]
         conf_score_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ] ->
             [
                 num_bbox,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
             ]
         cond_cls_prob_pred_batch, cls_spec_conf_score_pred_batch:
             - [
                 batch_size,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 num_cls,
             ] ->
             [
                 num_bbox,
-                num_grid_cell_height,
-                num_grid_cell_width,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
                 num_anchor_box,
                 num_cls,
             ]
