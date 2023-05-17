@@ -5,9 +5,7 @@ import pickle
 import xml.etree.ElementTree as Et
 import cv2
 
-# from PIL import Image
 from torch.utils.data import Dataset
-# from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
 
 
 DATASET_DIR = "datasets"
@@ -198,9 +196,6 @@ class VOCDataset(Dataset):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         annot = self.annot_list[index]
-
-        # img = Image.open(img_path)
-        # lbl = BoundingBoxesOnImage(self.annot_list[index], shape=img.size)
 
         return index, img, annot
 

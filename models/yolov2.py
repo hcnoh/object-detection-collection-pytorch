@@ -369,11 +369,11 @@ class YOLOv2(Module):
         cond_cls_prob
         '''
         for i in range(num_anchor_box):
-            y[..., i * (num_cls + 5) + 5:i * (num_cls + 5) + 5 + num_cls] = (
+            y[..., i * (5 + num_cls) + 5:i * (5 + num_cls) + 5 + num_cls] = (
                 torch.softmax(
                     y[
                         ...,
-                        i * (num_cls + 5) + 5:i * (num_cls + 5) + 5 + num_cls
+                        i * (5 + num_cls) + 5:i * (5 + num_cls) + 5 + num_cls
                     ],
                     dim=-1
                 )
