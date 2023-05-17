@@ -86,7 +86,6 @@ class YOLOv2(Module):
                 kernel_size=[1, 1],
                 padding="same",
             ),
-            BatchNorm2d(self.head_output_dim),
         )
 
     def backbone(self, x):
@@ -1008,7 +1007,7 @@ class YOLOv2(Module):
             (ty_tgt_batch - ty_pred_batch) ** 2
         )
         loss_xy = torch.masked_select(loss_xy, responsible_mask_batch)
-        loss_xy = loss_xy.sum()
+        loss_xy = loss_xy.mean()
 
         '''
         loss_wh:
@@ -1025,7 +1024,7 @@ class YOLOv2(Module):
             (th_tgt_batch - th_pred_batch) ** 2
         )
         loss_wh = torch.masked_select(loss_wh, responsible_mask_batch)
-        loss_wh = loss_wh.sum()
+        loss_wh = loss_wh.mean()
 
         '''
         loss_conf:
@@ -1039,7 +1038,7 @@ class YOLOv2(Module):
         '''
         loss_conf = (iou_batch - conf_score_pred_batch) ** 2
         loss_conf = torch.masked_select(loss_conf, responsible_mask_batch)
-        loss_conf = loss_conf.sum()
+        loss_conf = loss_conf.mean()
 
         '''
         loss_noobj:
@@ -1062,7 +1061,7 @@ class YOLOv2(Module):
         loss_noobj = torch.masked_select(
             loss_noobj, not_responsible_mask_batch
         )
-        loss_noobj = loss_noobj.sum()
+        loss_noobj = loss_noobj.mean()
 
         '''
         loss_cls:
@@ -1083,8 +1082,8 @@ class YOLOv2(Module):
         '''
         loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
         loss_cls = loss_cls.sum(-1)
-        loss_cls = torch.masked_select(loss_cls, obj_mask_batch)
-        loss_cls = loss_cls.sum()
+        loss_cls = torch.masked_select(loss_cls, responsible_mask_batch)
+        loss_cls = loss_cls.mean()
 
         '''
         loss:
