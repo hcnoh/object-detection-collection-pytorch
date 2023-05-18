@@ -1586,10 +1586,10 @@ class YOLOv2(Module):
 
                 obj_mask[cy, cx] = 1
 
-                sig_txty = torch.tensor(sig_txty).to(DEVICE)
-                bwbh = torch.tensor(bwbh).to(DEVICE)
-                bbox_coord = torch.tensor(bbox_coord).to(DEVICE)
-                cls_tgt = torch.tensor(cls_tgt).to(DEVICE)
+                sig_txty = torch.tensor(sig_txty).to(DEVICE).float()
+                bwbh = torch.tensor(bwbh).to(DEVICE).float()
+                bbox_coord = torch.tensor(bbox_coord).to(DEVICE).float()
+                cls_tgt = torch.tensor(cls_tgt).to(DEVICE).float()
                 obj_mask = torch.tensor(obj_mask).to(DEVICE)
 
                 sig_txty_batch.append(sig_txty)
