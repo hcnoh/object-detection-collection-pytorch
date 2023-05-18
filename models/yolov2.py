@@ -326,16 +326,6 @@ class YOLOv2(Module):
         num_anchor_box = self.num_anchor_box
         num_cls = self.num_cls
 
-        # '''
-        # pw, ph: [1, 1, 1, num_anchor_box]
-        # '''
-        # pw = (
-        #     self.anchor_box_width_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        # )
-        # ph = (
-        #     self.anchor_box_height_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        # )
-
         '''
         y:
             - [
@@ -358,7 +348,7 @@ class YOLOv2(Module):
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
                 num_anchor_box,
-                (5 + num_cls),
+                5 + num_cls,
             ]
         '''
         y = y.reshape(
@@ -367,40 +357,9 @@ class YOLOv2(Module):
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
                 num_anchor_box,
-                (5 + num_cls),
+                5 + num_cls,
             ]
         )
-
-        # '''
-        # tx, ty -> sigmoid(tx), sigmoid(ty)
-        # '''
-        # y[..., 0::5 + num_cls] = torch.sigmoid(y[..., 0::5 + num_cls])
-        # y[..., 1::5 + num_cls] = torch.sigmoid(y[..., 1::5 + num_cls])
-
-        # '''
-        # tw, th -> pw * exp(tw), ph * exp(th)
-        # '''
-        # y[..., 2::5 + num_cls] = pw * torch.exp(y[..., 2::5 + num_cls])
-        # y[..., 3::5 + num_cls] = ph * torch.exp(y[..., 3::5 + num_cls])
-
-        # '''
-        # to -> sigmoid(to)
-        # '''
-        # y[..., 4::5 + num_cls] = torch.sigmoid(y[..., 4::5 + num_cls])
-
-        # '''
-        # cond_cls_prob
-        # '''
-        # for i in range(num_anchor_box):
-        #     y[..., i * (5 + num_cls) + 5:i * (5 + num_cls) + 5 + num_cls] = (
-        #         torch.softmax(
-        #             y[
-        #                 ...,
-        #                 i * (5 + num_cls) + 5:i * (5 + num_cls) + 5 + num_cls
-        #             ],
-        #             dim=-1
-        #         )
-        #     )
 
         return y
 
@@ -464,7 +423,7 @@ class YOLOv2(Module):
                 num_grid_cell_in_height,
                 num_grid_cell_width,
                 num_anchor_box,
-                (5 + num_cls),
+                5 + num_cls,
             ]
         '''
         y = self.head(h)
@@ -490,7 +449,7 @@ class YOLOv2(Module):
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
                 num_anchor_box,
-                (5 + num_cls),
+                5 + num_cls,
             ]
         '''
         y_pred_batch = self(x_batch)
