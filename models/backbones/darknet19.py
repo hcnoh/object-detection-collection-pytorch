@@ -264,7 +264,7 @@ class Darknet19Backbone(Module):
             Args:
                 x:
                     - the input image whose type is FloatTensor
-                    - [N, H, W, C]
+                    - [batch_size, height, width, rgb]
         '''
         x = (
             (
@@ -274,7 +274,7 @@ class Darknet19Backbone(Module):
             torch.tensor([0.229, 0.224, 0.225]).float().to(DEVICE)
         )
 
-        # x: [N, C, H, W]
+        '''x: [batch_size, height, width, rgb]'''
         x = x.permute(0, 3, 1, 2)
 
         return x
