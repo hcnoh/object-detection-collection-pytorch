@@ -1207,6 +1207,18 @@ class YOLOv1(Module):
                     "lbl_list": transformed["labels"],
                 }
 
+            else:
+                transformed = self.resize(
+                    image=img, bboxes=annot["bbox_list"],
+                    labels=annot["lbl_list"],
+                )
+
+                img = transformed["image"]
+                annot = {
+                    "bbox_list": transformed["bboxes"],
+                    "lbl_list": transformed["labels"],
+                }
+
             x = torch.tensor(img).to(DEVICE)
             x_batch.append(x)
             x_img_id_batch.append(img_id)
