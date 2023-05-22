@@ -16,14 +16,14 @@ TRAIN_CONFIG = {
     "YOLOv1": {
         "VOC2012": {
             "learning_rate_list": [
+                1e-2,
                 1e-3,
                 1e-4,
-                1e-5,
             ],
             "num_epoch_list": [
-                60,
+                75,
                 30,
-                70,
+                30,
             ],
             "lambda_xy": 5.0,
             "lambda_wh": 5.0,

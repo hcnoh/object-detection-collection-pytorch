@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def main():
-    model_name = "YOLOv2"
+    model_name = "YOLOv1"
 
     ckpt_path = "ckpts"
     if not os.path.exists(ckpt_path):

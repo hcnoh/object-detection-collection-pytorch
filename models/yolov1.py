@@ -8,12 +8,11 @@ import torch.backends.mps
 import albumentations
 import albumentations.pytorch
 
-from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout, Conv2d, BatchNorm2d, LeakyReLU
+from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Dropout
 from torch.nn.functional import one_hot
 from torch.optim import SGD
 
 from config import DEVICE
-from models.backbones.darknet19 import Darknet19Backbone
 from models.backbones.googlenet import GoogLeNetBackbone
 from models.utils import get_iou, nms
 
@@ -406,7 +405,6 @@ class YOLOv1(Module):
                 batch_size,
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
-                num_anchor_box,
                 num_cls,
             ]
         '''
@@ -426,7 +424,7 @@ class YOLOv1(Module):
             ]
         '''
         cls_spec_conf_score_pred_batch = (
-            cond_cls_prob_pred_batch *
+            cond_cls_prob_pred_batch.unsqueeze(-2) *
             conf_score_pred_batch.unsqueeze(-1)
         )
 
@@ -555,7 +553,7 @@ class YOLOv1(Module):
         self,
         x_batch,
         sig_txty_tgt_batch,
-        bwbh_tgt_batch,
+        sig_twth_tgt_batch,
         bbox_coord_tgt_batch,
         cls_tgt_batch,
         obj_mask_batch,
@@ -579,7 +577,7 @@ class YOLOv1(Module):
                         num_grid_cell_in_width,
                         2,
                     ]
-                bwbh_tgt_batch:
+                sig_twth_tgt_batch:
                     - [
                         num_bbox,
                         num_grid_cell_in_height,
@@ -621,14 +619,6 @@ class YOLOv1(Module):
         num_anchor_box = self.num_anchor_box
 
         '''
-        pw, ph: [1, 1, 1, num_anchor_box]
-        pwph: [1, 1, 1, num_anchor_box, 2]
-        '''
-        pw = self.anchor_box_width_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        ph = self.anchor_box_height_list.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        pwph = torch.stack([pw, ph], dim=-1)
-
-        '''
         bbox_img_id_to_x_img_id_mapper:
             - [num_bbox, batch_size] -> [num_bbox]
         '''
@@ -641,7 +631,7 @@ class YOLOv1(Module):
         )
 
         '''
-        sig_txty_pred_batch, exp_twth_pred_batch:
+        sig_txty_pred_batch, sig_twth_pred_batch:
             - [
                 batch_size,
                 num_grid_cell_in_height,
@@ -684,7 +674,20 @@ class YOLOv1(Module):
                 num_grid_cell_in_width,
                 num_anchor_box,
             ]
-        cond_cls_prob_pred_batch, cls_spec_conf_score_pred_batch:
+        cond_cls_prob_pred_batch:
+            - [
+                batch_size,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
+                num_cls,
+            ] ->
+            [
+                num_bbox,
+                num_grid_cell_in_height,
+                num_grid_cell_in_width,
+                num_cls,
+            ]
+        cls_spec_conf_score_pred_batch:
             - [
                 batch_size,
                 num_grid_cell_in_height,
@@ -702,7 +705,7 @@ class YOLOv1(Module):
         '''
         (
             sig_txty_pred_batch,
-            exp_twth_pred_batch,
+            sig_twth_pred_batch,
             bbox_coord_pred_batch,
             conf_score_pred_batch,
             cond_cls_prob_pred_batch,
@@ -711,14 +714,14 @@ class YOLOv1(Module):
 
         (
             sig_txty_pred_batch,
-            exp_twth_pred_batch,
+            sig_twth_pred_batch,
             bbox_coord_pred_batch,
             conf_score_pred_batch,
             cond_cls_prob_pred_batch,
             cls_spec_conf_score_pred_batch,
         ) = (
             sig_txty_pred_batch[bbox_img_id_to_x_img_id_mapper],
-            exp_twth_pred_batch[bbox_img_id_to_x_img_id_mapper],
+            sig_twth_pred_batch[bbox_img_id_to_x_img_id_mapper],
             bbox_coord_pred_batch[bbox_img_id_to_x_img_id_mapper],
             conf_score_pred_batch[bbox_img_id_to_x_img_id_mapper],
             cond_cls_prob_pred_batch[bbox_img_id_to_x_img_id_mapper],
@@ -726,7 +729,7 @@ class YOLOv1(Module):
         )
 
         '''
-        sqrt_exp_twth_pred_batch:
+        sqrt_sig_twth_pred_batch:
             - [
                 num_bbox,
                 num_grid_cell_in_height,
@@ -735,46 +738,23 @@ class YOLOv1(Module):
                 2,
             ]
         '''
-        sqrt_exp_twth_pred_batch = torch.sqrt(exp_twth_pred_batch)
+        sqrt_sig_twth_pred_batch = torch.sqrt(sig_twth_pred_batch)
 
         '''
         sig_txty_tgt_batch,
-        exp_twth_tgt_batch, sqrt_exp_twth_tgt_batch:
+        sig_twth_tgt_batch, sqrt_sig_twth_tgt_batch:
             - [
                 num_bbox,
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
-                num_anchor_box,
+                1,
                 2,
             ]
         '''
         sig_txty_tgt_batch = sig_txty_tgt_batch.unsqueeze(-2)
 
-        exp_twth_tgt_batch = bwbh_tgt_batch.unsqueeze(-2) / pwph
-        sqrt_exp_twth_tgt_batch = torch.sqrt(exp_twth_tgt_batch)
-
-        '''
-        cls_tgt_batch:
-            - [
-                num_bbox,
-                num_grid_cell_in_height,
-                num_grid_cell_in_width,
-                1,
-                num_cls,
-            ]
-        '''
-        cls_tgt_batch = cls_tgt_batch.unsqueeze(-2)
-
-        '''
-        obj_mask_batch:
-            - [
-                num_bbox,
-                num_grid_cell_in_height,
-                num_grid_cell_in_width,
-                1,
-            ]
-        '''
-        obj_mask_batch = obj_mask_batch.unsqueeze(-1)
+        sig_twth_tgt_batch = sig_twth_tgt_batch.unsqueeze(-2)
+        sqrt_sig_twth_tgt_batch = torch.sqrt(sig_twth_tgt_batch)
 
         '''
         bbox_coord_tgt_batch:
@@ -829,7 +809,9 @@ class YOLOv1(Module):
         responsible_mask_batch = one_hot(
             responsible_mask_batch, num_anchor_box
         )
-        responsible_mask_batch = (responsible_mask_batch * obj_mask_batch)
+        responsible_mask_batch = (
+            responsible_mask_batch * obj_mask_batch.unsqueeze(-1)
+        )
 
         not_responsible_mask_batch = (responsible_mask_batch != 1)
 
@@ -867,7 +849,7 @@ class YOLOv1(Module):
             ] ->
             [num_bbox] -> []
         '''
-        loss_wh = mse_loss(sqrt_exp_twth_tgt_batch, sqrt_exp_twth_pred_batch)
+        loss_wh = mse_loss(sqrt_sig_twth_tgt_batch, sqrt_sig_twth_pred_batch)
         loss_wh = torch.masked_select(
             loss_wh, responsible_mask_batch.unsqueeze(-1)
         )
@@ -916,20 +898,18 @@ class YOLOv1(Module):
                 num_bbox,
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
-                num_anchor_box,
                 num_cls,
             ] ->
             [
                 num_bbox,
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
-                num_anchor_box,
             ] ->
             [num_bbox] -> []
         '''
         loss_cls = mse_loss(cls_tgt_batch, cond_cls_prob_pred_batch)
         loss_cls = loss_cls.sum(-1)
-        loss_cls = torch.masked_select(loss_cls, responsible_mask_batch)
+        loss_cls = torch.masked_select(loss_cls, obj_mask_batch)
         loss_cls = loss_cls.mean()
 
         '''
@@ -1007,7 +987,7 @@ class YOLOv1(Module):
             (
                 x_batch_one_step,
                 sig_txty_tgt_batch_one_step,
-                bwbh_tgt_batch_one_step,
+                sig_twth_tgt_batch_one_step,
                 bbox_coord_tgt_batch_one_step,
                 cls_tgt_batch_one_step,
                 obj_mask_batch_one_step,
@@ -1044,7 +1024,7 @@ class YOLOv1(Module):
             loss_one_step = self.get_loss(
                 x_batch_one_step,
                 sig_txty_tgt_batch_one_step,
-                bwbh_tgt_batch_one_step,
+                sig_twth_tgt_batch_one_step,
                 bbox_coord_tgt_batch_one_step,
                 cls_tgt_batch_one_step,
                 obj_mask_batch_one_step,
@@ -1112,14 +1092,9 @@ class YOLOv1(Module):
 
         min_val_loss = 1e+10
 
-        self.transform = TRANSFORM
-
         for lr, num_epochs in zip(learning_rate_list, num_epoch_list):
 
             for epoch in range(1 + cum_epoch, num_epochs + 1 + cum_epoch):
-                if epoch - 1 % 10 == 0:
-                    self.resize = self.get_random_size_transform()
-
                 train_loss_mean = self.run_one_epoch(
                     epoch,
                     train_loader,
@@ -1201,7 +1176,7 @@ class YOLOv1(Module):
 
         x_batch = []
         sig_txty_batch = []
-        bwbh_batch = []
+        sig_twth_batch = []
         bbox_coord_batch = []
         cls_tgt_batch = []
         obj_mask_batch = []
@@ -1253,7 +1228,7 @@ class YOLOv1(Module):
                 sig_txty = np.zeros(
                     shape=[num_grid_cell_in_height, num_grid_cell_in_width, 2]
                 )
-                bwbh = np.zeros(
+                sig_twth = np.zeros(
                     shape=[num_grid_cell_in_height, num_grid_cell_in_width, 2]
                 )
                 bbox_coord = np.zeros(
@@ -1287,11 +1262,13 @@ class YOLOv1(Module):
 
                 sig_tx = bx - cx
                 sig_ty = by - cy
+                sig_tw = bw / width
+                sig_th = bh / height
 
                 sig_txty[cy, cx, 0] = sig_tx
                 sig_txty[cy, cx, 1] = sig_ty
-                bwbh[cy, cx, 0] = bw
-                bwbh[cy, cx, 1] = bh
+                sig_twth[cy, cx, 0] = sig_tw
+                sig_twth[cy, cx, 1] = sig_th
 
                 bbox_coord[cy, cx, 0] = x1
                 bbox_coord[cy, cx, 1] = y1
@@ -1306,13 +1283,13 @@ class YOLOv1(Module):
                 obj_mask[cy, cx] = 1
 
                 sig_txty = torch.tensor(sig_txty).to(DEVICE).float()
-                bwbh = torch.tensor(bwbh).to(DEVICE).float()
+                sig_twth = torch.tensor(sig_twth).to(DEVICE).float()
                 bbox_coord = torch.tensor(bbox_coord).to(DEVICE).float()
                 cls_tgt = torch.tensor(cls_tgt).to(DEVICE).float()
                 obj_mask = torch.tensor(obj_mask).to(DEVICE)
 
                 sig_txty_batch.append(sig_txty)
-                bwbh_batch.append(bwbh)
+                sig_twth_batch.append(sig_twth)
                 bbox_coord_batch.append(bbox_coord)
                 cls_tgt_batch.append(cls_tgt)
                 obj_mask_batch.append(obj_mask)
@@ -1323,7 +1300,7 @@ class YOLOv1(Module):
             - [batch_size, height, width, rgb]
         sig_txty_batch:
             - [num_bbox, num_grid_cell_in_height, num_grid_cell_in_width, 2]
-        bwbh_batch:
+        sig_twth_batch:
             - [num_bbox, num_grid_cell_in_height, num_grid_cell_in_width, 2]
         bbox_coord_batch:
             - [num_bbox, num_grid_cell_in_height, num_grid_cell_in_width, 4]
@@ -1343,7 +1320,7 @@ class YOLOv1(Module):
         '''
         x_batch = torch.stack(x_batch, dim=0)
         sig_txty_batch = torch.stack(sig_txty_batch, dim=0)
-        bwbh_batch = torch.stack(bwbh_batch, dim=0)
+        sig_twth_batch = torch.stack(sig_twth_batch, dim=0)
         bbox_coord_batch = torch.stack(bbox_coord_batch, dim=0)
         cls_tgt_batch = torch.stack(cls_tgt_batch, dim=0)
         obj_mask_batch = torch.stack(obj_mask_batch, dim=0)
@@ -1353,29 +1330,13 @@ class YOLOv1(Module):
         return (
             x_batch,
             sig_txty_batch,
-            bwbh_batch,
+            sig_twth_batch,
             bbox_coord_batch,
             cls_tgt_batch,
             obj_mask_batch,
             x_img_id_batch,
             bbox_img_id_batch,
         )
-
-    def get_random_size_transform(self):
-        target_size_list = 32 * np.arange(10, 20)
-
-        target_size = np.random.choice(target_size_list)
-
-        transform = albumentations.Compose(
-            [
-                albumentations.Resize(target_size, target_size)
-            ],
-            bbox_params=albumentations.BboxParams(
-                format="pascal_voc", label_fields=["labels"]
-            ),
-        )
-
-        return transform
 
     def get_resize_transform(self, height, width):
         transform = albumentations.Compose(
