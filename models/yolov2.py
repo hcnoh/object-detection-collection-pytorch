@@ -918,42 +918,6 @@ class YOLOv2(Module):
             cls_spec_conf_score_pred_batch[bbox_img_id_to_x_img_id_mapper],
         )
 
-        # '''
-        # tx_pred_batch, ty_pred_batch, tw_pred_batch, th_pred_batch:
-        #     - [
-        #         num_bbox,
-        #         num_grid_cell_in_height,
-        #         num_grid_cell_in_width,
-        #         num_anchor_box,
-        #     ]
-        # '''
-        # tx_pred_batch = torch.logit(bbox_norm_pred_batch[..., 0], eps)
-        # ty_pred_batch = torch.logit(bbox_norm_pred_batch[..., 1], eps)
-        # tw_pred_batch = torch.log(bbox_norm_pred_batch[..., 2] / pw + eps)
-        # th_pred_batch = torch.log(bbox_norm_pred_batch[..., 3] / ph + eps)
-
-        # '''
-        # tx_tgt_batch, ty_tgt_batch, tw_tgt_batch, th_tgt_batch:
-        #     - [
-        #         num_bbox,
-        #         num_grid_cell_in_height,
-        #         num_grid_cell_in_width,
-        #         num_anchor_box,
-        #     ]
-        # '''
-        # tx_tgt_batch = torch.logit(
-        #     bbox_norm_tgt_batch[..., 0].unsqueeze(-1).clamp(0., 1.), eps
-        # )
-        # ty_tgt_batch = torch.logit(
-        #     bbox_norm_tgt_batch[..., 1].unsqueeze(-1).clamp(0., 1.), eps
-        # )
-        # tw_tgt_batch = torch.log(
-        #     bbox_norm_tgt_batch[..., 2].unsqueeze(-1) / pw + eps
-        # )
-        # th_tgt_batch = torch.log(
-        #     bbox_norm_tgt_batch[..., 3].unsqueeze(-1) / ph + eps
-        # )
-
         '''
         sqrt_exp_twth_pred_batch:
             - [
@@ -1080,14 +1044,10 @@ class YOLOv2(Module):
             [num_bbox] -> []
         '''
         loss_xy = mse_loss(sig_txty_tgt_batch, sig_txty_pred_batch)
-        # loss_xy = (
-        #     (tx_tgt_batch - tx_pred_batch) ** 2 +
-        #     (ty_tgt_batch - ty_pred_batch) ** 2
-        # )
         loss_xy = torch.masked_select(
             loss_xy, responsible_mask_batch.unsqueeze(-1)
         )
-        loss_xy = loss_xy.mean()
+        loss_xy = loss_xy.sum()
 
         '''
         loss_wh:
@@ -1101,14 +1061,10 @@ class YOLOv2(Module):
             [num_bbox] -> []
         '''
         loss_wh = mse_loss(sqrt_exp_twth_tgt_batch, sqrt_exp_twth_pred_batch)
-        # loss_wh = (
-        #     (tw_tgt_batch - tw_pred_batch) ** 2 +
-        #     (th_tgt_batch - th_pred_batch) ** 2
-        # )
         loss_wh = torch.masked_select(
             loss_wh, responsible_mask_batch.unsqueeze(-1)
         )
-        loss_wh = loss_wh.mean()
+        loss_wh = loss_wh.sum()
 
         '''
         loss_conf:
@@ -1121,9 +1077,8 @@ class YOLOv2(Module):
             [num_bbox] -> []
         '''
         loss_conf = mse_loss(iou_batch, conf_score_pred_batch)
-        # loss_conf = (iou_batch - conf_score_pred_batch) ** 2
         loss_conf = torch.masked_select(loss_conf, responsible_mask_batch)
-        loss_conf = loss_conf.mean()
+        loss_conf = loss_conf.sum()
 
         '''
         loss_noobj:
@@ -1143,11 +1098,10 @@ class YOLOv2(Module):
             []
         '''
         loss_noobj = conf_score_pred_batch ** 2
-        # loss_noobj = (0 - conf_score_pred_batch) ** 2
         loss_noobj = torch.masked_select(
             loss_noobj, not_responsible_mask_batch
         )
-        loss_noobj = loss_noobj.mean()
+        loss_noobj = loss_noobj.sum()
 
         '''
         loss_cls:
@@ -1167,10 +1121,9 @@ class YOLOv2(Module):
             [num_bbox] -> []
         '''
         loss_cls = mse_loss(cls_tgt_batch, cond_cls_prob_pred_batch)
-        # loss_cls = (cls_tgt_batch - cond_cls_prob_pred_batch) ** 2
         loss_cls = loss_cls.sum(-1)
         loss_cls = torch.masked_select(loss_cls, responsible_mask_batch)
-        loss_cls = loss_cls.mean()
+        loss_cls = loss_cls.sum()
 
         '''
         loss:
