@@ -52,6 +52,12 @@ class GoogLeNetBackbone(Module):
         return y
 
     def normalize(self, x):
+        '''
+            Args:
+                x:
+                    - the input image whose type is FloatTensor
+                    - [batch_size, height, width, rgb]
+        '''
         x = (
             (
                 x / 255 -
@@ -60,7 +66,7 @@ class GoogLeNetBackbone(Module):
             torch.tensor([[[[0.229, 0.224, 0.225]]]]).float().to(DEVICE)
         )
 
-        # x: [N, C, H, W]
+        '''x: [batch_size, height, width, rgb]'''
         x = x.permute(0, 3, 1, 2)
 
         return x
