@@ -23,13 +23,15 @@ class ConvLayer(Module):
     ) -> None:
         super().__init__()
 
+        padding = "same" if stride == 1 else "valid"
+
         self.net = Sequential(
             Conv2d(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 kernel_size=kernel_size,
                 stride=stride,
-                padding="same",
+                padding=padding,
             ),
             BatchNorm2d(out_channels),
             LeakyReLU(leaky_relu),
@@ -222,6 +224,43 @@ class Darknet53Backbone(Module):
             net2_stride=1,
             repeat=4,
         )
+
+    def forward(self, x):
+        '''
+            Args:
+                x:
+                    - the input image whose type is FloatTensor
+                    - [batch_size, height, width, rgb]
+        '''
+        print("=========================")
+        print(x.shape)
+        h = self.normalize(x)
+        print(h.shape)
+
+        h = self.net1(h)
+        print(h.shape)
+        h = self.net2(h)
+        print(h.shape)
+        h = self.net3(h)
+        print(h.shape)
+        h = self.net4(h)
+        print(h.shape)
+        h = self.net5(h)
+        print(h.shape)
+        h = self.net6(h)
+        print(h.shape)
+        h = self.net7(h)
+        print(h.shape)
+        h = self.net8(h)
+        print(h.shape)
+        h = self.net9(h)
+        print(h.shape)
+        h = self.net10(h)
+        print(h.shape)
+        y = self.net11(h)
+        print(y.shape)
+
+        return y
 
     def normalize(self, x):
         '''
