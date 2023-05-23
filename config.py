@@ -1,7 +1,7 @@
 # You can choose device config from: cpu, cuda, mps
 DEVICE = "cpu"
 
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 
 MODEL_CONFIG = {
     "YOLOv1": {
@@ -21,9 +21,9 @@ TRAIN_CONFIG = {
                 1e-4,
             ],
             "num_epoch_list": [
-                75,
-                30,
-                30,
+                150,
+                60,
+                60,
             ],
             "lambda_xy": 5.0,
             "lambda_wh": 5.0,

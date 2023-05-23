@@ -461,7 +461,7 @@ class YOLOv1(Module):
         trans_img = transformed["image"]
 
         '''x_batch: [batch_size, height, width, rgb]'''
-        x_batch = torch.tensor([trans_img]).to(DEVICE)
+        x_batch = torch.tensor(np.array([trans_img])).to(DEVICE)
 
         '''
         bbox_coord_pred_batch:
