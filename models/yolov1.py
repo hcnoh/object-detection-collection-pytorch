@@ -457,7 +457,7 @@ class YOLOv1(Module):
         original_resize = self.get_resize_transform(height, width)
 
         transformed = self.resize(
-            image=img
+            image=img, bboxes=[], labels=[],
         )
         img = transformed["image"]
 
@@ -1274,8 +1274,8 @@ class YOLOv1(Module):
 
                 sig_tx = bx - cx
                 sig_ty = by - cy
-                sig_tw = bw / width
-                sig_th = bh / height
+                sig_tw = bw / num_grid_cell_in_width
+                sig_th = bh / num_grid_cell_in_height
 
                 sig_txty[cy, cx, 0] = sig_tx
                 sig_txty[cy, cx, 1] = sig_ty
