@@ -147,7 +147,7 @@ class YOLOv1(Module):
                 batch_size,
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
-                (num_anchor_box * 5 + num_cls),
+                num_anchor_box * 5 + num_cls,
             ]
         '''
         y = self.head_model(h)
@@ -156,7 +156,7 @@ class YOLOv1(Module):
                 batch_size,
                 num_grid_cell_in_height,
                 num_grid_cell_in_width,
-                (num_anchor_box * 5 + num_cls),
+                num_anchor_box * 5 + num_cls,
             ]
         )
 
@@ -236,7 +236,6 @@ class YOLOv1(Module):
             num_grid_cell_in_width,
             _,
         ) = y_pred_batch.shape
-        # num_cls = self.num_cls
 
         '''
         txtytwthto_pred_batch:
@@ -279,7 +278,7 @@ class YOLOv1(Module):
         sig_ty_pred_batch = torch.sigmoid(ty_pred_batch)
 
         '''
-        tw, th -> pw * exp(tw), ph * exp(th)
+        tw, th -> sigmoid(tw), sigmoid(th)
 
         tw_pred_batch, th_pred_batch,
         sig_tw_pred_batch, sig_th_pred_batch
@@ -459,10 +458,10 @@ class YOLOv1(Module):
         transformed = self.resize(
             image=img, bboxes=[], labels=[],
         )
-        img = transformed["image"]
+        trans_img = transformed["image"]
 
         '''x_batch: [batch_size, height, width, rgb]'''
-        x_batch = torch.tensor([img]).to(DEVICE)
+        x_batch = torch.tensor([trans_img]).to(DEVICE)
 
         '''
         bbox_coord_pred_batch:
@@ -529,14 +528,13 @@ class YOLOv1(Module):
         )
 
         transformed = original_resize(
-            image=img, bboxes=bbox_coord_pred_batch.tolist(),
+            image=trans_img,
+            bboxes=bbox_coord_pred_batch.tolist(),
             labels=[
                 self.cls_list[cls_idx]
                 for cls_idx in argmax_cls_spec_conf_score_pred_batch
             ],
         )
-
-        img = transformed["image"]
 
         annot_pred = {
             "bbox_list": transformed["bboxes"],
