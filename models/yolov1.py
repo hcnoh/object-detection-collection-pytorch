@@ -515,6 +515,12 @@ class YOLOv1(Module):
         )
 
         bbox_coord_pred_batch = bbox_coord_pred_batch.detach().cpu().numpy()
+        bbox_coord_pred_batch[..., 0::2] = np.clip(
+            bbox_coord_pred_batch[..., 0::2], a_min=0.0, a_max=224 - 1.0
+        )
+        bbox_coord_pred_batch[..., 1::2] = np.clip(
+            bbox_coord_pred_batch[..., 1::2], a_min=0.0, a_max=224 - 1.0
+        )
         conf_score_pred_batch = conf_score_pred_batch.detach().cpu().numpy()
         cls_spec_conf_score_pred_batch = (
             cls_spec_conf_score_pred_batch.detach().cpu().numpy()
